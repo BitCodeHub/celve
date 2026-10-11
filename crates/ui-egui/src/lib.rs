@@ -22,6 +22,7 @@ pub mod keytips;
 pub mod panes;
 pub mod pivot_pane;
 pub mod ribbon;
+pub mod sage;
 pub mod tabs;
 pub mod text_box;
 pub mod theme;
@@ -121,6 +122,8 @@ pub struct Services {
     pub open_async: Option<Box<dyn Fn()>>,
     /// Files delivered asynchronously (name, bytes), opened on the next frame.
     pub inbox: Option<Inbox>,
+    /// The built-in assistant (desktop app); `None` where it can't run (web, tests).
+    pub sage: Option<Box<dyn sage::SageHost>>,
 }
 
 /// Shared queue of files read asynchronously (browser file picker, drag and drop).
@@ -162,6 +165,8 @@ pub struct SheetApp {
     /// Chart selected on the sheet (id).
     pub selected_chart: Option<u32>,
     pub started: f64,
+    /// The Sage assistant pane and conversation.
+    pub sage: sage::Chat,
 }
 
 impl SheetApp {
@@ -194,6 +199,7 @@ impl SheetApp {
             shots: control::Shots::default(),
             selected_chart: None,
             started: now_ms(),
+            sage: sage::Chat::default(),
         }
     }
 
@@ -289,6 +295,9 @@ impl SheetApp {
 
     /// UI-only commands (dialogs, view toggles that aren't saved in the file).
     fn run_ui_command(&mut self, id: &str, p: &Json) -> Option<Result<Json, String>> {
+        if let Some(r) = sage::run_command(self, id, p) {
+            return Some(r);
+        }
         let r = match id {
             "ui.ribbonTab" => {
                 self.ui.ribbon_tab = p.get("tab").and_then(Json::as_str).unwrap_or("Home").to_string();
@@ -568,6 +577,7 @@ impl SheetApp {
         }
         self.effective_dark = ctx.theme() == egui::Theme::Dark;
         control::poll(self, ctx);
+        sage::poll(self, ctx);
         // Files read asynchronously (web file picker, dropped files).
         let arrived: Vec<(String, Vec<u8>)> = self
             .services
@@ -615,6 +625,7 @@ impl SheetApp {
             tabs::status_bar(self, ui);
         }
         tabs::sheet_tabs(self, ui);
+        sage::show(self, ui);
         pivot_pane::show(self, ui);
         panes::show(self, ui);
         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.grid_bg)).show(ui, |ui| {

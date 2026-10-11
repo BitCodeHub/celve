@@ -12,7 +12,8 @@
 //! - `ui.ribbon {tab}`, `ui.dialog {name}`, `ui.dialog.set {field, value}`,
 //!   `ui.dialog.confirm`, `ui.dialog.cancel`, `ui.message.dismiss`
 //! - `ui.edit.begin {text?}`, `ui.edit.commit {move?}`, `ui.edit.cancel`
-//! - `ui.screenshot {path?}` — PNG of the window (base64 when no path)
+//! - `ui.screenshot {path?, maxSize?}` — PNG of the window (base64 when no path; `maxSize`
+//!   scales the longest side down to at most that many pixels)
 //! - `ui.resize {width, height}`, `ui.set {dark?, formulaBar?}`
 //! - `app.open {path}`, `app.save {path?}`, `app.quit`
 
@@ -40,14 +41,14 @@ impl ControlRequest {
 
 pub enum Outcome {
     Done(Json),
-    Screenshot { path: Option<String> },
+    Screenshot { path: Option<String>, max: Option<u32> },
 }
 
 #[derive(Default)]
 pub struct Shots {
     token: u64,
     queued: Vec<(u64, f64, u32)>,
-    pending: Vec<(u64, Option<String>, Sender<ControlResponse>, f64)>,
+    pending: Vec<(u64, Option<String>, Option<u32>, Sender<ControlResponse>, f64)>,
 }
 
 fn ok(v: Json) -> Outcome {
@@ -331,7 +332,10 @@ pub fn handle(app: &mut SheetApp, ctx: &egui::Context, method: &str, p: &Json) -
             ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
             ok(Json::Null)
         }
-        "ui.screenshot" => return Outcome::Screenshot { path: s("path").map(str::to_string) },
+        "ui.screenshot" => {
+            let max = p.get("maxSize").and_then(Json::as_u64).map(|m| m.clamp(64, 8192) as u32);
+            return Outcome::Screenshot { path: s("path").map(str::to_string), max };
+        }
         "app.open" => {
             let Some(path) = s("path") else { return err("missing `path`") };
             app.open_path(path);
@@ -361,11 +365,11 @@ pub fn poll(app: &mut SheetApp, ctx: &egui::Context) {
             Outcome::Done(v) => {
                 let _ = req.reply.send(v);
             }
-            Outcome::Screenshot { path } => {
+            Outcome::Screenshot { path, max } => {
                 app.shots.token += 1;
                 let token = app.shots.token;
                 app.shots.queued.push((token, crate::now_ms() + 100.0, 0));
-                app.shots.pending.push((token, path, req.reply, crate::now_ms() + 8000.0));
+                app.shots.pending.push((token, path, max, req.reply, crate::now_ms() + 8000.0));
             }
         }
     }
@@ -410,12 +414,12 @@ pub fn collect_screenshots(app: &mut SheetApp, ctx: &egui::Context) {
     });
     for (token, image) in events {
         if let Some(i) = app.shots.pending.iter().position(|(t, ..)| *t == token) {
-            let (_, path, reply, _) = app.shots.pending.remove(i);
-            let _ = reply.send(save_image(&image, path.as_deref()));
+            let (_, path, max, reply, _) = app.shots.pending.remove(i);
+            let _ = reply.send(save_image_scaled(&image, path.as_deref(), max));
         }
     }
     let now = crate::now_ms();
-    app.shots.pending.retain(|(_, _, reply, deadline)| {
+    app.shots.pending.retain(|(_, _, _, reply, deadline)| {
         if now < *deadline {
             return true;
         }
@@ -426,14 +430,24 @@ pub fn collect_screenshots(app: &mut SheetApp, ctx: &egui::Context) {
 
 /// Encodes a screenshot as PNG to `path`, or returns it as base64.
 pub fn save_image(image: &egui::ColorImage, path: Option<&str>) -> Json {
+    save_image_scaled(image, path, None)
+}
+
+/// [`save_image`], first scaling the image so its longest side is at most `max` pixels.
+pub fn save_image_scaled(image: &egui::ColorImage, path: Option<&str>, max: Option<u32>) -> Json {
     let [w, h] = image.size;
     let mut rgba = Vec::with_capacity(w * h * 4);
     for p in &image.pixels {
         rgba.extend_from_slice(&p.to_array());
     }
     let Some(img) = image::RgbaImage::from_raw(w as u32, h as u32, rgba) else { return json!({"ok": false, "error": "bad image"}) };
+    let mut img = image::DynamicImage::ImageRgba8(img);
+    if let Some(max) = max.filter(|&m| m > 0 && (w as u32 > m || h as u32 > m)) {
+        img = img.resize(max, max, image::imageops::FilterType::Triangle);
+    }
+    let (w, h) = (img.width(), img.height());
     let mut png = Vec::new();
-    if let Err(e) = image::DynamicImage::ImageRgba8(img).write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png) {
+    if let Err(e) = img.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png) {
         return json!({"ok": false, "error": e.to_string()});
     }
     match path {
@@ -459,6 +473,17 @@ mod tests {
 
     fn ids(v: &[Json]) -> Vec<&str> {
         v.iter().filter_map(|c| c.get("id").and_then(Json::as_str)).collect()
+    }
+
+    #[test]
+    fn screenshots_scale_down_to_max_size() {
+        let image = egui::ColorImage::new([400, 100], vec![egui::Color32::RED; 400 * 100]);
+        let v = save_image_scaled(&image, None, Some(200));
+        assert_eq!((v["result"]["width"].clone(), v["result"]["height"].clone()), (json!(200), json!(50)));
+        // Smaller than the limit: unchanged.
+        let v = save_image_scaled(&image, None, Some(1000));
+        assert_eq!(v["result"]["width"], json!(400));
+        assert!(v["result"]["base64"].as_str().is_some_and(|b| !b.is_empty()));
     }
 
     #[test]

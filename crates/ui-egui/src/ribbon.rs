@@ -113,6 +113,9 @@ pub fn title_bar(app: &mut SheetApp, ui: &mut Ui) {
                 if icon_button(ui, Icon::Comment, t.text_dim, "Comments", vec2(28.0, 26.0)).clicked() {
                     app.open_dialog("comments", json!({}));
                 }
+                if icon_button(ui, Icon::Sage, t.text, "Sage: ask anything, or let Sage build it (⌘⇧I)", vec2(28.0, 26.0)).clicked() {
+                    app.run_or_alert("view.sage", json!({}));
+                }
             });
         });
     });
@@ -776,6 +779,10 @@ fn home(app: &mut SheetApp, ui: &mut Ui) {
             ],
         );
     });
+    sep(ui);
+    if big_button(ui, Icon::Sage, "Sage", "Sage: ask anything, or let Sage build it (⌘⇧I)", false).clicked() {
+        act(app, "view.sage", json!({}));
+    }
 }
 
 fn font_combo(app: &mut SheetApp, ui: &mut Ui, st: &Style) {
@@ -1837,6 +1844,7 @@ pub fn shortcut(app: &mut SheetApp, key: Key, m: Modifiers) {
     let shift = m.shift;
     let id: Option<(&str, serde_json::Value)> = match key {
         Key::B => Some(("home.bold", json!({}))),
+        Key::I if shift => Some(("view.sage", json!({}))),
         Key::I => Some(("home.italic", json!({}))),
         Key::U => Some(("home.underline", json!({}))),
         Key::Z if shift => Some(("edit.redo", json!({}))),

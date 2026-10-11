@@ -20,6 +20,13 @@ impl ToolResult {
     pub fn json(v: &Value) -> Self {
         Self::text(serde_json::to_string_pretty(v).unwrap_or_default())
     }
+    /// An image content block (base64 `data`) with a short text caption.
+    pub fn image(caption: impl Into<String>, mime: &str, data: impl Into<String>) -> Self {
+        Self {
+            content: vec![json!({"type": "image", "data": data.into(), "mimeType": mime}), json!({"type": "text", "text": caption.into()})],
+            is_error: false,
+        }
+    }
     pub fn error(t: impl Into<String>) -> Self {
         Self { content: vec![json!({"type": "text", "text": t.into()})], is_error: true }
     }
@@ -257,7 +264,7 @@ pub fn tool_definitions() -> Vec<Value> {
             "Insert a chart from a data range (first row/column used as series names and categories, like Excel). Returns the chart id.",
             obj(
                 json!({
-                    "range": string("Source data range including headers, e.g. \"A1:C6\""),
+                    "range": string("Source data range including headers, e.g. \"A1:C6\"; or areas that line up, e.g. \"A1:G1,A7:G7\" (header row + totals row)"),
                     "type": enumeration("Chart type", CHART_TYPES),
                     "subtype": enumeration("Variant (optional)", &["clustered", "stacked", "stacked100", "markers"]),
                     "title": string("Chart title"),
@@ -359,8 +366,11 @@ pub fn tool_definitions() -> Vec<Value> {
         tool(
             "screenshot",
             "Screenshot",
-            "Save a PNG screenshot of the GridCraft window to `path`. Desktop app only (`gridcraft-cli mcp --connect 7979`).",
-            obj(json!({"path": string("Output PNG path")}), &["path"]),
+            "Look at the GridCraft window. Without `path` the screenshot comes back as an image you can see (scaled to at most `maxSize` pixels on its long side, default 1568); with `path` it is saved there as a PNG instead. Desktop app only (`gridcraft-cli mcp --connect 7979`).",
+            obj(
+                json!({"path": string("Output PNG path (omit to receive the image)"), "maxSize": int("Longest side in pixels when returning the image (default 1568)")}),
+                &[],
+            ),
             true,
         ),
         tool(
@@ -556,7 +566,26 @@ fn screenshot(b: &mut dyn Backend, a: &Args) -> Result<Value, String> {
     if !b.has_ui() {
         return Err(NO_UI.into());
     }
-    b.call("ui.screenshot", json!({"path": req_str(a, "path")?}))
+    match a.get("path").and_then(Value::as_str) {
+        Some(path) => b.call("ui.screenshot", json!({"path": path})),
+        None => {
+            let max = a.get("maxSize").and_then(Value::as_u64).unwrap_or(DEFAULT_LOOK_SIZE).clamp(256, 4096);
+            b.call("ui.screenshot", json!({"maxSize": max}))
+        }
+    }
+}
+
+/// Longest side of a screenshot returned as an image (larger images are scaled down by the model anyway).
+const DEFAULT_LOOK_SIZE: u64 = 1568;
+
+/// A screenshot that came back as base64 becomes an image block the model can see.
+fn image_result(name: &str, v: &Value) -> Option<ToolResult> {
+    if name != "screenshot" {
+        return None;
+    }
+    let data = v.get("base64").and_then(Value::as_str)?;
+    let (w, h) = (v.get("width").and_then(Value::as_u64).unwrap_or(0), v.get("height").and_then(Value::as_u64).unwrap_or(0));
+    Some(ToolResult::image(format!("Screenshot of the GridCraft window ({w}×{h})."), "image/png", data))
 }
 
 fn dispatch(b: &mut dyn Backend, name: &str, a: &Args) -> Result<Value, String> {
@@ -610,7 +639,7 @@ pub fn call_tool(b: &mut dyn Backend, name: &str, args: &Value) -> ToolResult {
         _ => return ToolResult::error("tool arguments must be a JSON object"),
     };
     match dispatch(b, name, a) {
-        Ok(v) => ToolResult::json(&v),
+        Ok(v) => image_result(name, &v).unwrap_or_else(|| ToolResult::json(&v)),
         Err(e) => ToolResult::error(format!("{name}: {e}")),
     }
 }

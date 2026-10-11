@@ -111,6 +111,8 @@ pub enum Icon {
     Sheet,
     Book,
     Folder,
+    /// The built-in assistant: a four-point sparkle with a small companion.
+    Sage,
 }
 
 struct G<'a> {
@@ -480,6 +482,16 @@ pub fn paint(p: &Painter, rect: Rect, icon: Icon, c: Color32) {
             g.line(&[(6.0, 10.0), (10.0, 6.0)], c, 1.2);
             g.rect(2.0, 8.0, 6.0, 4.0, None, Some(c));
             g.rect(8.0, 4.0, 6.0, 4.0, None, Some(c));
+        }
+        Icon::Sage => {
+            // Our own mark: concave four-point stars (each drawn as two convex diamonds).
+            let star = |cx: f32, cy: f32, r: f32, col: Color32| {
+                let k = r * 0.28;
+                g.poly(&[(cx, cy - r), (cx + k, cy), (cx, cy + r), (cx - k, cy)], col);
+                g.poly(&[(cx - r, cy), (cx, cy - k), (cx + r, cy), (cx, cy + k)], col);
+            };
+            star(7.0, 9.0, 6.0, GREEN);
+            star(12.8, 3.6, 2.6, PURPLE);
         }
         Icon::Comment | Icon::Note => {
             g.poly(

@@ -1633,3 +1633,48 @@ fn notes_comments_and_links_survive_a_json_save() {
     assert_eq!(after.hyperlinks, before.hyperlinks);
     assert_eq!(after.cells, before.cells);
 }
+
+#[test]
+fn chart_from_lined_up_areas_header_plus_totals_row() {
+    // What an agent asks for: months header row + a totals row further down.
+    let mut s = s();
+    s.execute(
+        "range.setValues",
+        json!({"range": "A1", "values": [["Category", "Jan", "Feb", "Mar"], ["Rent", 100, 100, 100], ["Food", 50, 60, 70], ["Total", "=SUM(B2:B3)", "=SUM(C2:C3)", "=SUM(D2:D3)"]]}),
+    )
+    .unwrap();
+    s.execute("insert.chart", json!({"range": "A1:D1,A4:D4", "type": "column", "at": "A7"})).unwrap();
+    let sh = s.doc().unwrap().wb.active().unwrap().clone();
+    let c = &sh.charts[0];
+    assert_eq!(c.series.len(), 1);
+    assert_eq!(c.series[0].name.as_deref(), Some("Sheet1!$A$4"));
+    assert_eq!(c.series[0].categories.as_deref(), Some("Sheet1!$B$1:$D$1"));
+    assert_eq!(c.series[0].values, "Sheet1!$B$4:$D$4");
+    assert_eq!(c.source.as_deref(), Some("Sheet1!A1:D1,Sheet1!A4:D4"));
+    // Columns that share rows: labels in A, one series from D.
+    s.execute("insert.chart", json!({"range": "A1:A3,D1:D3"})).unwrap();
+    let sh = s.doc().unwrap().wb.active().unwrap().clone();
+    let c = &sh.charts[1];
+    assert_eq!(c.series.len(), 1);
+    assert_eq!(c.series[0].name.as_deref(), Some("Sheet1!$D$1"));
+    assert_eq!(c.series[0].categories.as_deref(), Some("Sheet1!$A$2:$A$3"));
+    assert_eq!(c.series[0].values, "Sheet1!$D$2:$D$3");
+    // Areas that don't line up, junk and too many areas are errors, never panics.
+    assert!(s.execute("insert.chart", json!({"range": "A1:B2,C5:F9"})).is_err());
+    assert!(s.execute("insert.chart", json!({"range": "A1:B2,nope"})).is_err());
+    let many = vec!["A1:B1"; 100].join(",");
+    assert!(s.execute("insert.chart", json!({"range": many})).is_err());
+    assert!(s.execute("insert.chart", json!({"range": ",,,"})).is_err());
+}
+
+#[test]
+fn autofit_column_width_accepts_a_range() {
+    let mut s = s();
+    s.execute("range.setValues", json!({"range": "A1", "values": [["x", "a much longer piece of text", "y"]]})).unwrap();
+    s.execute("home.autofitColumnWidth", json!({"range": "Sheet1!A1:C1"})).unwrap();
+    let sh = s.doc().unwrap().wb.active().unwrap().clone();
+    let w = |c: u32| sh.cols.get(&c).and_then(|e| e.size).unwrap_or(0.0);
+    assert!(w(1) > w(0) && w(1) > 100.0, "B widened: {} vs {}", w(1), w(0));
+    assert!(w(2) > 0.0, "C fitted too");
+    assert!(s.execute("home.autofitColumnWidth", json!({"range": "not a range"})).is_err());
+}

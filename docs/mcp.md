@@ -48,16 +48,16 @@ with a file open.
 | `evaluate_formula` | `formula`, `cell?` | Evaluates without changing the sheet. |
 | `select` | `range`, `active?` | Sets the selection. |
 | `format_range` | `range`, `bold?`, `italic?`, `underline?`, `fontName?`, `fontSize?`, `fontColor?`, `fillColor?`, `numberFormat?`, `horizontalAlign?`, `wrapText?`, `borders?` | Composes the `home.*` formatting commands. |
-| `insert_chart` | `range`, `type`, `title?`, `subtype?`, `at?` | `insert.chart`. |
+| `insert_chart` | `range`, `type`, `title?`, `subtype?`, `at?` | `insert.chart`; `range` may be areas that line up (`"A1:G1,A7:G7"`). |
 | `create_table` | `range`, `style?`, `header?`, `name?` | `insert.table`. |
 | `sort_range` | `keys`, `range?`, `header?` | `data.sort`; keys are `"B"`, `"B desc"` or `{column, order}`. |
 | `filter` | `column`, `range?`, `values?`, `custom?`, `top?`, `blanks?`, `clear?` | `data.filterBy` (turns AutoFilter on when needed). |
 | `open_workbook` / `save_workbook` / `new_workbook` | `path` / `path?` / `sample?` | Files (`.xlsx`, `.csv`, `.tsv`, `.json`, `.html`). |
 | `undo` / `redo` | `steps?` | History. |
-| `screenshot` | `path` | PNG of the window (Remote only). |
+| `screenshot` | `path?`, `maxSize?` | Remote only. Without `path`: an MCP **image** block the model can look at (longest side ≤ `maxSize`, default 1568). With `path`: saved as a PNG. |
 | `list_functions` | `search?`, `category?` | Worksheet functions with signatures. |
 
-Results are one text block holding pretty JSON; failures set `isError: true` with a readable message. Unknown tools,
+Results are one text block holding pretty JSON (a `screenshot` without `path` is an image block plus a caption); failures set `isError: true` with a readable message. Unknown tools,
 missing required arguments and wrong argument types are JSON-RPC `-32602` errors; malformed JSON is `-32700`; unknown
 methods `-32601`.
 

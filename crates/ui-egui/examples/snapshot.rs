@@ -2,10 +2,13 @@
 //!
 //! `cargo run --release -p gridcraft-ui-egui --example snapshot -- [--sample sales] [--in file.xlsx]
 //!  [--size 1440x900] [--scale 2] [--cmd 'id={json}']... [--tab Insert] [--dark] [--language en|zh|ja|ko|ru|pt]
-//!  [--dialog 'name={json}'] out.png`
+//!  [--dialog 'name={json}'] [--sage transcript.json] out.png`
+//!
+//! `--sage` opens the Sage pane with a conversation (the `sage.state` result: `{messages:[{role,
+//! text, steps}]}`), backed by a stand-in assistant so the input box shows.
 
 use gridcraft_engine::Session;
-use gridcraft_ui_egui::SheetApp;
+use gridcraft_ui_egui::{SheetApp, sage};
 use serde_json::json;
 
 fn main() {
@@ -21,6 +24,7 @@ fn main() {
     let mut chart: Option<u32> = None;
     let mut dialog: Option<String> = None;
     let mut language: Option<String> = None;
+    let mut sage: Option<String> = None;
     let mut out = "snapshot.png".to_string();
     let mut i = 0;
     while i < args.len() {
@@ -66,6 +70,10 @@ fn main() {
                 i += 1;
                 dialog = args.get(i).cloned();
             }
+            "--sage" => {
+                i += 1;
+                sage = args.get(i).cloned();
+            }
             "--language" => {
                 i += 1;
                 language = args.get(i).cloned();
@@ -107,6 +115,22 @@ fn main() {
                     app.ui.ribbon_tab = t;
                 }
                 app.grid.pane = pane;
+                if let Some(path) = &sage {
+                    let v: serde_json::Value = serde_json::from_slice(&std::fs::read(path).expect("read transcript")).expect("transcript JSON");
+                    let v = v.get("result").cloned().unwrap_or(v);
+                    app.services.sage = Some(Box::new(StandIn));
+                    app.sage.open = true;
+                    for m in v["messages"].as_array().cloned().unwrap_or_default() {
+                        let role = match m["role"].as_str() {
+                            Some("user") => sage::Role::User,
+                            Some("error") => sage::Role::Error,
+                            _ => sage::Role::Sage,
+                        };
+                        let steps =
+                            m["steps"].as_array().map(|a| a.iter().filter_map(|s| s.as_str().map(String::from)).collect()).unwrap_or_default();
+                        app.sage.messages.push(sage::Message { role, text: m["text"].as_str().unwrap_or("").into(), steps, pictures: vec![] });
+                    }
+                }
                 app.selected_chart = chart;
                 if let Some(d) = &dialog {
                     let (name, p) =
@@ -120,4 +144,20 @@ fn main() {
     let img = harness.render().expect("render");
     img.save(&out).expect("save png");
     eprintln!("wrote {out} ({}x{})", img.width(), img.height());
+}
+
+/// An always-available assistant that never answers (renders only).
+struct StandIn;
+
+impl sage::SageHost for StandIn {
+    fn availability(&self) -> Result<(), String> {
+        Ok(())
+    }
+    fn warm_up(&mut self) {}
+    fn send(&mut self, _: &str, _: &[sage::SagePicture], _: &str) {}
+    fn stop(&mut self) {}
+    fn reset(&mut self) {}
+    fn poll(&mut self) -> Vec<sage::SageEvent> {
+        vec![]
+    }
 }

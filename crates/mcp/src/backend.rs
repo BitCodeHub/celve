@@ -27,12 +27,20 @@ pub struct Remote {
     addr: String,
     conn: Option<(BufReader<TcpStream>, TcpStream)>,
     next_id: u64,
+    /// Sent as `auth {token}` first on every connection when the app's channel requires one.
+    token: Option<String>,
 }
 
 impl Remote {
     /// Connect to `addr` (`127.0.0.1:7979`), failing fast when nothing is listening.
     pub fn connect(addr: &str) -> std::io::Result<Self> {
-        let mut r = Self { addr: addr.to_string(), conn: None, next_id: 1 };
+        Self::connect_with_token(addr, None)
+    }
+
+    /// Connect to a control channel that requires a token (the app's private channel for its
+    /// built-in assistant). The token is sent as the first line of every connection.
+    pub fn connect_with_token(addr: &str, token: Option<String>) -> std::io::Result<Self> {
+        let mut r = Self { addr: addr.to_string(), conn: None, next_id: 1, token };
         r.reconnect()?;
         Ok(r)
     }
@@ -52,6 +60,13 @@ impl Remote {
                     s.set_write_timeout(Some(IO_TIMEOUT)).ok();
                     let read = s.try_clone()?;
                     self.conn = Some((BufReader::new(read), s));
+                    if let Some(token) = self.token.clone() {
+                        let reply = self.exchange(&json!({"id": 0, "method": "auth", "params": {"token": token}}).to_string())?;
+                        if !reply.contains("\"ok\":true") {
+                            self.conn = None;
+                            return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "control channel refused the token"));
+                        }
+                    }
                     return Ok(());
                 }
                 Err(e) => last = e,
@@ -64,6 +79,11 @@ impl Remote {
         if self.conn.is_none() {
             self.reconnect()?;
         }
+        self.exchange(line)
+    }
+
+    /// One line out, one line back on the current connection.
+    fn exchange(&mut self, line: &str) -> std::io::Result<String> {
         let Some((reader, writer)) = self.conn.as_mut() else {
             return Err(std::io::Error::new(std::io::ErrorKind::NotConnected, "not connected"));
         };

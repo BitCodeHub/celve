@@ -382,6 +382,76 @@ fn remote_backend_over_tcp() {
     assert!(Remote::connect("127.0.0.1:1").is_err());
 }
 
+/// A backend with a "window": answers `ui.screenshot` with a tiny base64 image.
+struct WithUi;
+
+impl Backend for WithUi {
+    fn call(&mut self, method: &str, params: Value) -> Result<Value, String> {
+        match method {
+            "ui.screenshot" if params.get("path").is_some() => Ok(json!({"path": params["path"], "width": 2, "height": 1})),
+            "ui.screenshot" => Ok(json!({"base64": "iVBORw0KGgo=", "width": 2, "height": 1, "maxSize": params["maxSize"]})),
+            m => Err(format!("unexpected {m}")),
+        }
+    }
+    fn has_ui(&self) -> bool {
+        true
+    }
+    fn describe(&self) -> String {
+        "fake window".into()
+    }
+}
+
+#[test]
+fn screenshot_without_path_is_an_image_the_model_can_see() {
+    let mut s = Server::new(Box::new(WithUi));
+    rpc(&mut s, 1, "initialize", json!({"protocolVersion": PROTOCOL_VERSION, "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}}));
+    let r = call(&mut s, "screenshot", json!({}));
+    assert_eq!(r["isError"], false, "{r}");
+    assert_eq!(r["content"][0]["type"], "image");
+    assert_eq!(r["content"][0]["mimeType"], "image/png");
+    assert_eq!(r["content"][0]["data"], "iVBORw0KGgo=");
+    assert!(r["content"][1]["text"].as_str().unwrap().contains("2×1"));
+    // With a path it is still saved to disk and described as JSON.
+    let r = call(&mut s, "screenshot", json!({"path": "/tmp/x.png"}));
+    assert_eq!(r["content"][0]["type"], "text");
+    // A hostile size is clamped, never passed through.
+    let r = call(&mut s, "screenshot", json!({"maxSize": 99_999_999}));
+    assert_eq!(r["content"][0]["type"], "image");
+}
+
+#[test]
+fn remote_backend_sends_its_token_first() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let handle = std::thread::spawn(move || {
+        // First connection: wrong token, refused. Second: right token, then one request.
+        for stream in listener.incoming().take(2) {
+            let stream = stream.unwrap();
+            let mut w = stream.try_clone().unwrap();
+            let mut r = BufReader::new(stream);
+            let mut line = String::new();
+            r.read_line(&mut line).unwrap();
+            let req: Value = serde_json::from_str(&line).unwrap();
+            assert_eq!(req["method"], "auth");
+            if req["params"]["token"] != "s3cret" {
+                w.write_all(b"{\"id\":0,\"ok\":false,\"error\":\"bad token\"}\n").unwrap();
+                continue;
+            }
+            w.write_all(b"{\"id\":0,\"ok\":true,\"result\":null}\n").unwrap();
+            line.clear();
+            r.read_line(&mut line).unwrap();
+            let req: Value = serde_json::from_str(&line).unwrap();
+            w.write_all(format!("{}\n", json!({"id": req["id"], "ok": true, "result": req["method"]})).as_bytes()).unwrap();
+        }
+    });
+    let addr = control_addr(&port.to_string());
+    let e = Remote::connect_with_token(&addr, Some("wrong".into())).err().unwrap();
+    assert_eq!(e.kind(), std::io::ErrorKind::PermissionDenied);
+    let mut r = Remote::connect_with_token(&addr, Some("s3cret".into())).unwrap();
+    assert_eq!(r.call("document.inspect", json!({})).unwrap(), json!("document.inspect"));
+    handle.join().unwrap();
+}
+
 #[test]
 fn file_commands_without_a_file_fail() {
     let mut s = server();

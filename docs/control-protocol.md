@@ -32,12 +32,26 @@ Errors come back as `{"id": …, "ok": false, "error": "…"}`.
 | `ui.edit.begin` / `ui.edit.text` / `ui.edit.commit` / `ui.edit.cancel` | `{text?}` / `{move?: down\|right\|up\|left\|none}` | Drive the cell editor |
 | `ui.ribbon` | `{tab}` | Switch ribbon tab |
 | `ui.dialog` / `ui.dialog.set` / `ui.dialog.confirm` / `ui.dialog.cancel` | `{name}` / `{field, value}` | Open, fill in and confirm dialogs |
-| `ui.screenshot` | `{path?}` | PNG of the window (base64 when no path) |
+| `ui.screenshot` | `{path?, maxSize?}` | PNG of the window (base64 when no path; `maxSize` scales the longest side down to that many pixels) |
 | `ui.set` | `{dark?, formulaBar?, ribbonCollapsed?}` | UI preferences |
 | `ui.resize` / `ui.focus` | `{width, height}` | Window control |
 | `app.open` / `app.save` / `app.quit` | `{path}` / `{path?}` | Files and lifetime |
 
 Any other method name that is a command id (e.g. `home.bold`) runs that command.
+
+### Sage
+
+The Sage assistant pane is driven with UI commands (through `engine.execute` like any command):
+`view.sage {on?}` shows or hides it, `sage.ask {text, pictures?: [path]}` sends a message (with
+pictures to look at), `sage.stop`, `sage.reset` (new conversation) and `sage.state` (the
+conversation so far: `{open, busy, messages: [{role, text, steps}]}`). See [`sage.md`](sage.md).
+
+### Private channel
+
+Besides `--control`, the desktop app opens a second control channel on a free loopback port for
+Sage's tools. It requires `{"method": "auth", "params": {"token": "…"}}` as the first line of every
+connection (the token is random per launch and only handed to Sage's own tool process); anything
+else gets `unauthorized` and the connection closes. `GRIDCRAFT_NO_SAGE=1` turns it (and Sage) off.
 
 Use `engine.execute` with `{command: "view.theme", params: {mode: "system"}}`
 to choose the display theme; `mode` accepts `"system"`, `"light"`, or `"dark"`.

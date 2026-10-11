@@ -170,7 +170,15 @@ pub fn specs() -> Vec<CommandSpec> {
             col_width
         ),
         cmd!("home.autofitRowHeight", "AutoFit Row Height", ["Home", "Cells", "Format"], None, "{rows?}", has_doc, autofit_rows),
-        cmd!("home.autofitColumnWidth", "AutoFit Column Width", ["Home", "Cells", "Format"], None, "{cols?}", has_doc, autofit_cols),
+        cmd!(
+            "home.autofitColumnWidth",
+            "AutoFit Column Width",
+            ["Home", "Cells", "Format"],
+            None,
+            "{cols?: \"B:D\", range?: \"A1:H7\"}",
+            has_doc,
+            autofit_cols
+        ),
         cmd!("home.defaultWidth", "Default Width…", ["Home", "Cells", "Format"], None, "{width: 64}", has_doc, default_width),
         cmd!("home.hideRows", "Hide Rows", ["Home", "Cells", "Format", "Hide & Unhide"], Some("Cmd+9"), "{rows?}", has_doc, |s, p| hide(
             s, p, true, true
@@ -909,8 +917,9 @@ fn cell_style(s: &mut Session, p: &Json) -> Result<Json> {
 
 fn line_targets(s: &Session, p: &Json, rows: bool) -> Result<Vec<(u32, u32)>> {
     let key = if rows { "rows" } else { "cols" };
-    if let Some(t) = str_param(p, key) {
-        let r = RangeRef::parse(t).ok_or_else(|| bad(key, format!("not a range: {t}")))?;
+    // `rows`/`cols` ("3:5", "B:D"), or the rows/columns a `range` ("A1:H7") spans.
+    if let Some((key, t)) = str_param(p, key).map(|t| (key, t)).or_else(|| str_param(p, "range").map(|t| ("range", t))) {
+        let r = RangeRef::parse(split_sheet(t).1).ok_or_else(|| bad(key, format!("not a range: {t}")))?;
         return Ok(vec![if rows { (r.start.row, r.end.row) } else { (r.start.col, r.end.col) }]);
     }
     Ok(s.doc()?.selection.ranges.iter().map(|r| if rows { (r.start.row, r.end.row) } else { (r.start.col, r.end.col) }).collect())

@@ -16,6 +16,7 @@ mod graphics;
 mod logging;
 #[cfg(target_os = "macos")]
 mod native_menu;
+mod sage;
 
 use gridcraft_engine::Session;
 use gridcraft_ui_egui::{Services, SheetApp};
@@ -40,8 +41,12 @@ impl eframe::App for App {
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
         self.0.raw_input_hook(raw);
         // Files dropped on the window open as workbooks.
+        // Pictures dropped while the Sage pane is open are attached to the next message instead.
         for f in std::mem::take(&mut raw.dropped_files) {
-            if let Some(p) = f.path().to_str().map(str::to_string).filter(|p| !p.is_empty()) {
+            let Some(p) = f.path().to_str().map(str::to_string).filter(|p| !p.is_empty()) else { continue };
+            if self.0.sage.open && gridcraft_ui_egui::sage::is_picture_name(&p) {
+                attach_to_sage(&mut self.0, &p);
+            } else {
                 self.0.open_path(&p);
             }
         }
@@ -51,6 +56,20 @@ impl eframe::App for App {
     }
     fn on_exit(&mut self) {
         save_prefs(&self.0);
+    }
+}
+
+fn attach_to_sage(app: &mut SheetApp, path: &str) {
+    let name = std::path::Path::new(path).file_name().and_then(|n| n.to_str()).unwrap_or("picture").to_string();
+    let result = std::fs::read(path)
+        .map_err(|e| format!("Couldn't read {name}: {e}"))
+        .and_then(|b| {
+            gridcraft_ui_egui::sage::SagePicture::from_bytes(&name, b)
+                .ok_or_else(|| format!("{name} isn't a picture Sage can read (PNG, JPEG, GIF or WebP under 5 MB)."))
+        })
+        .and_then(|p| app.sage.attach(p));
+    if let Err(e) = result {
+        app.toast = Some((e, gridcraft_ui_egui::now_ms()));
     }
 }
 
@@ -192,6 +211,10 @@ fn main() -> eframe::Result<()> {
         }
     }));
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // Started by Sage's assistant as its MCP server: no window, no log file, stdio only.
+    if args.first().map(String::as_str) == Some("--mcp-bridge") {
+        std::process::exit(sage::run_bridge(args.get(1).map(String::as_str).unwrap_or("")));
+    }
     if args.iter().any(|a| a == "--version" || a == "-V") {
         println!("GridCraft {}", env!("CARGO_PKG_VERSION"));
         return Ok(());
@@ -278,10 +301,23 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(move |cc| {
             SheetApp::setup_context_for_language(&cc.egui_ctx, app.ui.dark, app.ui.language);
-            if let Some(port) = control_port {
-                match control_server::start(port, cc.egui_ctx.clone()) {
-                    Ok(rx) => app.control_rx = Some(rx),
-                    Err(e) => log::error!("control channel on port {port}: {e}"),
+            // Both channels feed the same queue: the public one (`--control`) and Sage's private,
+            // token-protected one on a free port.
+            let (tx, rx) = std::sync::mpsc::channel();
+            app.control_rx = Some(rx);
+            if let Some(port) = control_port
+                && let Err(e) = control_server::start(port, cc.egui_ctx.clone(), tx.clone(), None)
+            {
+                log::error!("control channel on port {port}: {e}");
+            }
+            if std::env::var_os("GRIDCRAFT_NO_SAGE").is_none() {
+                let token = sage::new_token();
+                match control_server::start(0, cc.egui_ctx.clone(), tx, Some(token.clone())) {
+                    Ok(port) => {
+                        let workdir = config_dir().filter(|_| prefs_enabled()).unwrap_or_else(std::env::temp_dir).join("Sage");
+                        app.services.sage = Some(Box::new(sage::Sage::new(port, token, workdir, cc.egui_ctx.clone())));
+                    }
+                    Err(e) => log::error!("Sage's control channel: {e}"),
                 }
             }
             Ok(Box::new(App(

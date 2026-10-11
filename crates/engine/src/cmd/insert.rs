@@ -63,7 +63,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Insert Chart",
             ["Insert", "Charts"],
             None,
-            "{range?, type?: column|bar|line|pie|doughnut|area|scatter|bubble|radar|combo|histogram|waterfall|funnel|treemap|sunburst|boxWhisker|stock, subtype?: clustered|stacked|stacked100|markers, title?, at?: \"H2\", width?, height?}",
+            "{range?: \"A1:D9\" or lined-up areas \"A1:G1,A7:G7\", type?: column|bar|line|pie|doughnut|area|scatter|bubble|radar|combo|histogram|waterfall|funnel|treemap|sunburst|boxWhisker|stock, subtype?: clustered|stacked|stacked100|markers, title?, at?: \"H2\", width?, height?}",
             has_doc,
             insert_chart
         ),
@@ -555,7 +555,84 @@ pub fn series_from_range(sh: &Sheet, r: RangeRef, by_rows: bool) -> Vec<Series> 
 /// Most cells a chart's source block may span (bounds the series it builds).
 const MAX_CHART_CELLS: u64 = 1_000_000;
 
+/// The areas of a multi-area chart source (`"A1:G1,A7:G7"`), when there is more than one.
+fn chart_areas(p: &Json) -> Result<Option<Vec<RangeRef>>> {
+    let Some(text) = str_param(p, "range").filter(|t| t.contains(',')) else { return Ok(None) };
+    let mut areas = Vec::new();
+    for part in text.split(',').map(str::trim).filter(|t| !t.is_empty()).take(MAX_CHART_AREAS + 1) {
+        let r = RangeRef::parse(split_sheet(part).1).ok_or_else(|| bad("range", format!("not a range: {part}")))?;
+        areas.push(r);
+    }
+    if areas.len() > MAX_CHART_AREAS {
+        return Err(bad("insert.chart", format!("a chart takes at most {MAX_CHART_AREAS} ranges")));
+    }
+    Ok(if areas.len() > 1 { Some(areas) } else { None })
+}
+
+/// Most areas a multi-area chart source may have.
+const MAX_CHART_AREAS: usize = 64;
+
+/// Series from several areas that line up, like Excel's chart from a multi-selection: rows that
+/// share their columns (a header row plus a totals row) or columns that share their rows. The
+/// first row/column is the header/labels when it holds text. Returns the series and whether
+/// they run along rows.
+pub fn series_from_areas(sh: &Sheet, areas: &[RangeRef]) -> Result<(Vec<Series>, bool)> {
+    let first = areas.first().ok_or_else(|| bad("range", "no ranges"))?;
+    let q = gridcraft_formula::quote_sheet(&sh.name);
+    let cell = |c: CellRef| format!("{q}!${}${}", gridcraft_core::col_to_letters(c.col), c.row + 1);
+    let span = |a: CellRef, b: CellRef| format!("{}:{}", cell(a), cell(b).rsplit_once('!').map(|(_, x)| x.to_string()).unwrap_or_default());
+    let is_text = |c: CellRef| sh.value(c).is_text() || sh.value(c).is_empty();
+    let by_rows = areas.iter().all(|a| a.start.col == first.start.col && a.end.col == first.end.col);
+    let by_cols = areas.iter().all(|a| a.start.row == first.start.row && a.end.row == first.end.row);
+    let mut out = Vec::new();
+    let series = |name: Option<String>, categories: Option<String>, values: String| Series {
+        name,
+        categories,
+        values,
+        bubble_sizes: None,
+        color: None,
+        secondary: false,
+        kind: None,
+        smooth: false,
+    };
+    if by_rows {
+        let rows: Vec<u32> = areas.iter().flat_map(|a| a.start.row..=a.end.row).take(MAX_CHART_CELLS as usize).collect();
+        let (c0, c1) = (first.start.col, first.end.col);
+        let header = rows.len() > 1 && rows.first().is_some_and(|&r| (c0..=c1).filter(|&c| c != c0).all(|c| is_text(CellRef::new(r, c))));
+        let data_rows = rows.get(header as usize..).unwrap_or_default();
+        let label = c1 > c0 && data_rows.iter().all(|&r| is_text(CellRef::new(r, c0)));
+        let dc0 = c0 + label as u32;
+        if dc0 > c1 {
+            return Ok((out, true));
+        }
+        let categories = rows.first().filter(|_| header).map(|&r| span(CellRef::new(r, dc0), CellRef::new(r, c1)));
+        for &r in data_rows {
+            out.push(series(label.then(|| cell(CellRef::new(r, c0))), categories.clone(), span(CellRef::new(r, dc0), CellRef::new(r, c1))));
+        }
+        Ok((out, true))
+    } else if by_cols {
+        let cols: Vec<u32> = areas.iter().flat_map(|a| a.start.col..=a.end.col).take(16_384).collect();
+        let (r0, r1) = (first.start.row, first.end.row);
+        let header = r1 > r0 && cols.iter().skip(1).all(|&c| is_text(CellRef::new(r0, c)));
+        let dr0 = r0 + header as u32;
+        let label = cols.len() > 1 && cols.first().is_some_and(|&c| (dr0..=r1).all(|r| is_text(CellRef::new(r, c))));
+        if dr0 > r1 {
+            return Ok((out, false));
+        }
+        let categories = cols.first().filter(|_| label).map(|&c| span(CellRef::new(dr0, c), CellRef::new(r1, c)));
+        for &c in cols.get(label as usize..).unwrap_or_default() {
+            out.push(series(header.then(|| cell(CellRef::new(r0, c))), categories.clone(), span(CellRef::new(dr0, c), CellRef::new(r1, c))));
+        }
+        Ok((out, false))
+    } else {
+        Err(EngineError::Other("The ranges for a chart must line up: the same columns (rows of data) or the same rows (columns of data).".into()))
+    }
+}
+
 fn insert_chart(s: &mut Session, p: &Json) -> Result<Json> {
+    if let Some(areas) = chart_areas(p)? {
+        return insert_chart_areas(s, p, &areas);
+    }
     let r = block(s, p)?;
     if r.count() > MAX_CHART_CELLS {
         return Err(bad("insert.chart", "range too large for a chart"));
@@ -605,6 +682,54 @@ fn insert_chart(s: &mut Session, p: &Json) -> Result<Json> {
         x_title: None,
         y_title: None,
         source: Some(format!("{}!{}", gridcraft_formula::quote_sheet(&sh.name), r.a1())),
+        by_rows,
+    };
+    edit(s, |cx| {
+        cx.sheet_mut(sheet)?.charts.push(chart);
+        Ok(json!({"chart": id}))
+    })
+}
+
+fn insert_chart_areas(s: &mut Session, p: &Json, areas: &[RangeRef]) -> Result<Json> {
+    let sheet = target_sheet(s, p)?;
+    let d = s.doc()?;
+    let sh = d.wb.sheet(sheet).ok_or(EngineError::NoDocument)?;
+    let (series, by_rows) = series_from_areas(sh, areas)?;
+    if series.is_empty() {
+        return Err(EngineError::Other("Select data for the chart first.".into()));
+    }
+    let t = str_param(p, "type").map(|t| if t == "auto" { "column" } else { t }).unwrap_or("column");
+    let kind = chart_kind(t, str_param(p, "subtype").unwrap_or(""));
+    let id = d.wb.next_object_id();
+    let last = areas.iter().fold(CellRef::new(0, 0), |m, a| CellRef::new(m.row.max(a.end.row), m.col.max(a.end.col)));
+    let top = areas.iter().map(|a| a.start.row).min().unwrap_or(0);
+    let at = cell_param(p, "at").unwrap_or_else(|| CellRef::new(top, last.col.saturating_add(2)));
+    let title = str_param(p, "title").map(str::to_string).or_else(|| match series.as_slice() {
+        [one] => one.name.as_ref().map(|n| gridcraft_calc::evaluate(&d.wb, sheet, at, n).display()),
+        _ => Some("Chart Title".into()),
+    });
+    let q = gridcraft_formula::quote_sheet(&sh.name);
+    let source = areas.iter().map(|a| format!("{q}!{}", a.a1())).collect::<Vec<_>>().join(",");
+    let chart = Chart {
+        id,
+        kind,
+        anchor: Anchor {
+            cell: at,
+            dx: 0.0,
+            dy: 0.0,
+            width: f64_param(p, "width").unwrap_or(480.0) as f32,
+            height: f64_param(p, "height").unwrap_or(288.0) as f32,
+            mode: anchor_mode_param(p).unwrap_or_default(),
+        },
+        title,
+        series,
+        legend: if matches!(kind, ChartKind::Pie | ChartKind::Doughnut) { LegendPos::Right } else { LegendPos::Bottom },
+        data_labels: false,
+        gridlines: !matches!(kind, ChartKind::Pie | ChartKind::Doughnut | ChartKind::Treemap | ChartKind::Sunburst | ChartKind::Funnel),
+        style: 1,
+        x_title: None,
+        y_title: None,
+        source: Some(source),
         by_rows,
     };
     edit(s, |cx| {
