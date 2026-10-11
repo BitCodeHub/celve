@@ -9,6 +9,7 @@ mod pivot_tests;
 mod richdata_tests;
 mod roundtrip;
 mod smooth_roundtrip;
+mod xls_tests;
 mod xlsb_tests;
 
 use std::io::Write;

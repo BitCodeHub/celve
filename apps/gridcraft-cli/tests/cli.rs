@@ -120,6 +120,92 @@ fn convert_xlsx_csv_roundtrip() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
+/// A minimal Excel 97-2003 workbook, assembled from the public [MS-XLS] and [MS-CFB] layouts:
+/// sheet "Data" with A1 = 21, B1 = A1*2 (saved result 42) and A2 = "hi".
+fn tiny_xls() -> Vec<u8> {
+    fn rec(kind: u16, body: &[u8]) -> Vec<u8> {
+        [kind.to_le_bytes().to_vec(), (body.len() as u16).to_le_bytes().to_vec(), body.to_vec()].concat()
+    }
+    let bof = |dt: u16| rec(0x0809, &[0x0600u16.to_le_bytes().to_vec(), dt.to_le_bytes().to_vec(), vec![0; 12]].concat());
+    let eof = rec(0x000A, &[]);
+    let cell = |row: u16, col: u16| [row.to_le_bytes(), col.to_le_bytes(), 0u16.to_le_bytes()].concat();
+    let mut sheet = bof(0x0010);
+    sheet.extend(rec(0x0203, &[cell(0, 0), 21f64.to_le_bytes().to_vec()].concat()));
+    // B1: PtgRef A1 (relative), PtgInt 2, PtgMul.
+    let rgce = [0x24u8, 0, 0, 0, 0xC0, 0x1E, 2, 0, 0x05];
+    sheet.extend(rec(
+        0x0006,
+        &[cell(0, 1), 42f64.to_le_bytes().to_vec(), vec![0; 6], (rgce.len() as u16).to_le_bytes().to_vec(), rgce.to_vec()].concat(),
+    ));
+    sheet.extend(rec(0x0204, &[cell(1, 0), 2u16.to_le_bytes().to_vec(), vec![0], b"hi".to_vec()].concat()));
+    sheet.extend(&eof);
+    let globals =
+        |offset: u32| [bof(0x0005), rec(0x0085, &[offset.to_le_bytes().to_vec(), vec![0, 0, 4, 0], b"Data".to_vec()].concat()), eof.clone()].concat();
+    let mut stream = globals(globals(0).len() as u32);
+    stream.extend(sheet);
+    stream.resize(4096, 0);
+    // Compound file: the stream in sectors 0-7, the directory in 8, the FAT in 9.
+    let n = stream.len() / 512;
+    let mut out = vec![0u8; 512];
+    out[..8].copy_from_slice(&[0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1]);
+    out[26] = 3;
+    out[28..30].copy_from_slice(&0xFFFEu16.to_le_bytes());
+    out[30] = 9;
+    out[32] = 6;
+    out[44] = 1;
+    out[48..52].copy_from_slice(&(n as u32).to_le_bytes());
+    out[56..60].copy_from_slice(&4096u32.to_le_bytes());
+    out[60..64].copy_from_slice(&0xFFFF_FFFEu32.to_le_bytes());
+    out[68..72].copy_from_slice(&0xFFFF_FFFEu32.to_le_bytes());
+    for i in 0..109 {
+        let v = if i == 0 { n as u32 + 1 } else { 0xFFFF_FFFF };
+        out[76 + i * 4..80 + i * 4].copy_from_slice(&v.to_le_bytes());
+    }
+    out.extend(&stream);
+    let mut dir = vec![0u8; 512];
+    for (k, (name, kind, child, start, size)) in
+        [("Root Entry", 5u8, 1u32, 0xFFFF_FFFEu32, 0u32), ("Workbook", 2, 0xFFFF_FFFF, 0, stream.len() as u32)].into_iter().enumerate()
+    {
+        let e = &mut dir[k * 128..(k + 1) * 128];
+        for (i, u) in name.encode_utf16().enumerate() {
+            e[i * 2..i * 2 + 2].copy_from_slice(&u.to_le_bytes());
+        }
+        e[64..66].copy_from_slice(&((name.len() as u16 + 1) * 2).to_le_bytes());
+        e[66] = kind;
+        e[68..80].copy_from_slice(&[0xFF; 12]);
+        e[76..80].copy_from_slice(&child.to_le_bytes());
+        e[116..120].copy_from_slice(&start.to_le_bytes());
+        e[120..124].copy_from_slice(&size.to_le_bytes());
+    }
+    out.extend(dir);
+    let mut fat: Vec<u32> = (1..=n as u32).collect();
+    fat[n - 1] = 0xFFFF_FFFE;
+    fat.push(0xFFFF_FFFE);
+    fat.push(0xFFFF_FFFD);
+    fat.resize(128, 0xFFFF_FFFF);
+    out.extend(fat.iter().flat_map(|v| v.to_le_bytes()));
+    out
+}
+
+#[test]
+fn xls_imports_and_converts_to_xlsx() {
+    let dir = tmpdir("xls");
+    let xls = dir.join("legacy.xls");
+    let xlsx = dir.join("legacy.xlsx");
+    std::fs::write(&xls, tiny_xls()).unwrap();
+    let info = ok(&["info", xls.to_str().unwrap()]);
+    assert!(info.contains("Data"), "{info}");
+    ok(&["convert", xls.to_str().unwrap(), xlsx.to_str().unwrap()]);
+    let text = ok(&["cat", xlsx.to_str().unwrap(), "--csv"]);
+    assert_eq!(text.lines().collect::<Vec<_>>(), ["21,42", "hi,"], "{text}");
+    let formulas = ok(&["cat", xlsx.to_str().unwrap(), "--formulas", "--csv"]);
+    assert!(formulas.contains("=A1*2"), "{formulas}");
+    assert!(ok(&["eval", "=B1+1", "--in", xls.to_str().unwrap()]).trim() == "43");
+    // .xls is import-only.
+    assert!(!run(&["convert", xlsx.to_str().unwrap(), dir.join("again.xls").to_str().unwrap()]).status.success());
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 #[test]
 fn commands_and_functions() {
     let out = ok(&["commands", "--search", "bold"]);

@@ -7,7 +7,7 @@
   Per-machine install into Program Files, a Start Menu shortcut, an optional desktop shortcut,
   App Paths (Win+R `gridcraft`),
   and GridCraft offered under "Open with" (and in Settings > Default apps) for .xlsx, .xlsm,
-  .csv and .tsv, without taking over the user's default app for them.
+  .xls, .csv and .tsv, without taking over the user's default app for them.
 
   UpgradeCode is fixed for GridCraft (generated 2026-10-07): never change it, or upgrades
   install side by side instead of replacing the old version.
@@ -182,6 +182,7 @@
              ignored (WiX rejects an empty Value, so it repeats the ProgId). -->
         <RegistryValue Root="HKLM" Key="Software\Classes\.xlsx\OpenWithProgids" Name="GridCraft.Workbook" Value="GridCraft.Workbook" Type="string" />
         <RegistryValue Root="HKLM" Key="Software\Classes\.xlsm\OpenWithProgids" Name="GridCraft.Workbook" Value="GridCraft.Workbook" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\.xls\OpenWithProgids" Name="GridCraft.Workbook" Value="GridCraft.Workbook" Type="string" />
         <RegistryValue Root="HKLM" Key="Software\Classes\.csv\OpenWithProgids" Name="GridCraft.TextData" Value="GridCraft.TextData" Type="string" />
         <RegistryValue Root="HKLM" Key="Software\Classes\.tsv\OpenWithProgids" Name="GridCraft.TextData" Value="GridCraft.TextData" Type="string" />
 
@@ -190,6 +191,7 @@
         <RegistryValue Root="HKLM" Key="Software\GridCraft\Capabilities" Name="ApplicationDescription" Value="Open-source spreadsheet for .xlsx, CSV and TSV files" Type="string" />
         <RegistryValue Root="HKLM" Key="Software\GridCraft\Capabilities\FileAssociations" Name=".xlsx" Value="GridCraft.Workbook" Type="string" />
         <RegistryValue Root="HKLM" Key="Software\GridCraft\Capabilities\FileAssociations" Name=".xlsm" Value="GridCraft.Workbook" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\GridCraft\Capabilities\FileAssociations" Name=".xls" Value="GridCraft.Workbook" Type="string" />
         <RegistryValue Root="HKLM" Key="Software\GridCraft\Capabilities\FileAssociations" Name=".csv" Value="GridCraft.TextData" Type="string" />
         <RegistryValue Root="HKLM" Key="Software\GridCraft\Capabilities\FileAssociations" Name=".tsv" Value="GridCraft.TextData" Type="string" />
         <RegistryValue Root="HKLM" Key="Software\RegisteredApplications" Name="GridCraft" Value="Software\GridCraft\Capabilities" Type="string" />

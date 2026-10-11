@@ -1,7 +1,8 @@
-//! Just enough of the Compound File Binary (CFB/OLE2) container to tell what a non-zip
-//! spreadsheet file is: Excel wraps password-protected workbooks in a CFB holding an
-//! `EncryptedPackage` stream, while Excel 97-2003 `.xls` (and other legacy Office files) are
-//! CFB files without one. Every read is bounds-checked and every loop bounded.
+//! The Compound File Binary (CFB/OLE2) container, implemented from Microsoft's public [MS-CFB]
+//! specification: enough to tell what a non-zip spreadsheet file is (Excel wraps
+//! password-protected workbooks in a CFB holding an `EncryptedPackage` stream, while Excel
+//! 97-2003 `.xls` files are CFB files with a `Workbook` stream) and to read a root-level stream.
+//! Every read is bounds-checked and every loop bounded.
 
 /// The CFB signature at the start of the file.
 pub(crate) const SIGNATURE: [u8; 8] = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
@@ -95,6 +96,216 @@ fn directory_names(b: &[u8]) -> Option<Vec<String>> {
     }
     // A directory longer than the bound (or a cyclic chain): report what was read.
     Some(names)
+}
+
+/// Free-sector marker in the FAT.
+const FREE_SECT: u32 = 0xFFFF_FFFF;
+/// "No entry" in the directory tree.
+const NO_STREAM: u32 = 0xFFFF_FFFF;
+/// Streams larger than this are refused (no spreadsheet stream is this big).
+const MAX_STREAM: u64 = 512 * 1024 * 1024;
+/// Directory entries read at most.
+const MAX_ENTRIES: usize = 65_536;
+
+/// A parsed compound file: the FAT, the mini FAT and the directory.
+pub(crate) struct Compound<'a> {
+    bytes: &'a [u8],
+    sector_size: usize,
+    cutoff: u64,
+    fat: Vec<u32>,
+    mini_fat: Vec<u32>,
+    entries: Vec<DirEntry>,
+}
+
+struct DirEntry {
+    name: String,
+    /// 1 storage, 2 stream, 5 root.
+    kind: u8,
+    left: u32,
+    right: u32,
+    child: u32,
+    start: u32,
+    size: u64,
+}
+
+/// Size of a mini-stream sector.
+const MINI_SECTOR: usize = 64;
+
+impl<'a> Compound<'a> {
+    /// Parses the header, FAT, mini FAT and directory. Errors are plain messages.
+    pub(crate) fn open(b: &'a [u8]) -> Result<Compound<'a>, String> {
+        if !b.starts_with(&SIGNATURE) {
+            return Err("not a compound file".into());
+        }
+        let sector_size = match u16_at(b, 30).ok_or("truncated header")? {
+            9 => 512,
+            12 => 4096,
+            _ => return Err("unsupported sector size".into()),
+        };
+        if u16_at(b, 32).ok_or("truncated header")? != 6 {
+            return Err("unsupported mini sector size".into());
+        }
+        let cutoff = u64::from(u32_at(b, 56).ok_or("truncated header")?);
+        let sectors = (b.len() / sector_size).saturating_sub(1);
+        let per = sector_size / 4;
+        let mut c = Compound { bytes: b, sector_size, cutoff, fat: vec![], mini_fat: vec![], entries: vec![] };
+
+        // The DIFAT: the FAT's sector ids, 109 in the header then chained DIFAT sectors.
+        let mut fat_sectors: Vec<u32> = (0..109).filter_map(|i| u32_at(b, 76 + i * 4)).filter(|&s| s < MAX_REG_SECT).collect();
+        let mut next = u32_at(b, 68).ok_or("truncated header")?;
+        let mut hops = 0usize;
+        while next < MAX_REG_SECT {
+            hops += 1;
+            if hops > MAX_DIFAT_SECTORS.min(sectors.saturating_add(1)) {
+                return Err("the DIFAT chain loops".into());
+            }
+            let s = c.sector(next).ok_or("a DIFAT sector is outside the file")?;
+            fat_sectors.extend((0..per - 1).filter_map(|i| u32_at(s, i * 4)).filter(|&x| x < MAX_REG_SECT));
+            next = u32_at(s, (per - 1) * 4).ok_or("truncated DIFAT sector")?;
+        }
+        if fat_sectors.len() > sectors.saturating_add(1) {
+            return Err("more FAT sectors than the file holds".into());
+        }
+        let mut fat = Vec::new();
+        for id in fat_sectors {
+            let s = c.sector(id).ok_or("a FAT sector is outside the file")?;
+            fat.extend((0..per).filter_map(|i| u32_at(s, i * 4)));
+        }
+        c.fat = fat;
+
+        // The mini FAT is an ordinary chain of sectors.
+        let mini_start = u32_at(b, 60).ok_or("truncated header")?;
+        if mini_start < MAX_REG_SECT {
+            let raw = c.chain(mini_start, None)?;
+            c.mini_fat = raw.as_chunks::<4>().0.iter().map(|q| u32::from_le_bytes(*q)).collect();
+        }
+
+        let raw = c.chain(u32_at(b, 48).ok_or("truncated header")?, None)?;
+        for e in raw.as_chunks::<128>().0.iter().take(MAX_ENTRIES) {
+            let len = usize::from(u16_at(e, 64).unwrap_or(0));
+            let name = if (2..=64).contains(&len) {
+                let units: Vec<u16> = (0..(len - 2) / 2).filter_map(|i| u16_at(e, i * 2)).collect();
+                String::from_utf16_lossy(&units)
+            } else {
+                String::new()
+            };
+            let low = u64::from(u32_at(e, 120).unwrap_or(0));
+            let high = u64::from(u32_at(e, 124).unwrap_or(0));
+            // Version 3 writers may leave garbage in the high half of the size.
+            let size = if sector_size == 512 { low } else { (high << 32) | low };
+            c.entries.push(DirEntry {
+                name,
+                kind: e.get(66).copied().unwrap_or(0),
+                left: u32_at(e, 68).unwrap_or(NO_STREAM),
+                right: u32_at(e, 72).unwrap_or(NO_STREAM),
+                child: u32_at(e, 76).unwrap_or(NO_STREAM),
+                start: u32_at(e, 116).unwrap_or(END_OF_CHAIN),
+                size,
+            });
+        }
+        if c.entries.first().is_none_or(|r| r.kind != 5) {
+            return Err("the compound file has no root entry".into());
+        }
+        Ok(c)
+    }
+
+    fn sector(&self, id: u32) -> Option<&'a [u8]> {
+        let start = (id as usize).checked_add(1)?.checked_mul(self.sector_size)?;
+        self.bytes.get(start..start.checked_add(self.sector_size)?)
+    }
+
+    /// Concatenates a FAT chain; with `size`, exactly that many bytes. Loops, dangling links and
+    /// short chains are errors.
+    fn chain(&self, start: u32, size: Option<u64>) -> Result<Vec<u8>, String> {
+        let cap = size.unwrap_or(MAX_STREAM).min(MAX_STREAM);
+        let max_hops = self.fat.len().min(self.bytes.len() / self.sector_size);
+        let mut out = Vec::new();
+        let mut id = start;
+        let mut hops = 0usize;
+        while id != END_OF_CHAIN && (out.len() as u64) < cap {
+            hops += 1;
+            if id >= MAX_REG_SECT || hops > max_hops.saturating_add(1) {
+                return Err("a sector chain is broken or loops".into());
+            }
+            out.extend_from_slice(self.sector(id).ok_or("a sector chain points outside the file")?);
+            id = *self.fat.get(id as usize).ok_or("a sector chain points outside the FAT")?;
+            if id == FREE_SECT {
+                return Err("a sector chain runs into a free sector".into());
+            }
+        }
+        if let Some(size) = size {
+            if (out.len() as u64) < size {
+                return Err("a stream is shorter than its directory entry says".into());
+            }
+            out.truncate(usize::try_from(size).map_err(|_| "a stream is too large")?);
+        }
+        Ok(out)
+    }
+
+    /// The root storage's direct children (the directory is a tree of siblings under `child`).
+    fn root_children(&self) -> impl Iterator<Item = &DirEntry> {
+        let mut found = vec![];
+        let mut seen = vec![false; self.entries.len()];
+        let mut stack = vec![self.entries.first().map_or(NO_STREAM, |r| r.child)];
+        while let Some(id) = stack.pop() {
+            let i = id as usize;
+            let Some(e) = self.entries.get(i) else { continue };
+            match seen.get_mut(i) {
+                Some(s) if !*s => *s = true,
+                _ => continue,
+            }
+            found.push(e);
+            stack.push(e.left);
+            stack.push(e.right);
+        }
+        found.into_iter()
+    }
+
+    fn find(&self, name: &str) -> Option<&DirEntry> {
+        self.root_children().find(|e| e.kind == 2 && e.name.eq_ignore_ascii_case(name))
+    }
+
+    /// Whether the root storage holds a stream called `name` (case-insensitive).
+    pub(crate) fn has_stream(&self, name: &str) -> bool {
+        self.find(name).is_some()
+    }
+
+    /// The bytes of the root-level stream called `name` (case-insensitive).
+    pub(crate) fn stream(&self, name: &str) -> Result<Option<Vec<u8>>, String> {
+        let Some(e) = self.find(name) else { return Ok(None) };
+        if e.size > MAX_STREAM {
+            return Err(format!("the {name} stream is too large"));
+        }
+        if e.size == 0 {
+            return Ok(Some(vec![]));
+        }
+        if e.size >= self.cutoff {
+            return self.chain(e.start, Some(e.size)).map(Some);
+        }
+        // A small stream lives in the mini stream (the root entry's data), in 64-byte sectors.
+        let root = self.entries.first().ok_or("no root entry")?;
+        let mini = self.chain(root.start, Some(root.size))?;
+        let mut out = Vec::new();
+        let mut id = e.start;
+        let mut hops = 0usize;
+        while (out.len() as u64) < e.size {
+            hops += 1;
+            if id >= MAX_REG_SECT || hops > self.mini_fat.len().saturating_add(1) {
+                return Err("a mini sector chain is broken or loops".into());
+            }
+            let start = (id as usize).checked_mul(MINI_SECTOR).ok_or("bad mini sector")?;
+            out.extend_from_slice(mini.get(start..start.saturating_add(MINI_SECTOR)).ok_or("a mini sector is outside the mini stream")?);
+            id = *self.mini_fat.get(id as usize).ok_or("a mini sector chain points outside the mini FAT")?;
+        }
+        out.truncate(usize::try_from(e.size).map_err(|_| "a stream is too large")?);
+        Ok(Some(out))
+    }
+}
+
+/// Whether the compound file holds an Excel 97-2003 workbook stream (`Workbook`, or `Book` for
+/// Excel 5/95).
+pub(crate) fn has_workbook_stream(bytes: &[u8]) -> bool {
+    Compound::open(bytes).is_ok_and(|c| c.has_stream("Workbook") || c.has_stream("Book"))
 }
 
 #[cfg(test)]

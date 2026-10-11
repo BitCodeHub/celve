@@ -84,6 +84,7 @@
 - **Compatible.** XLSX is the native format: styles, themes, formulas (including dynamic arrays),
   tables, conditional formats, validation, comments, hyperlinks, charts, pictures, sparklines,
   PivotTables and print settings round-trip. CSV and TSV too.
+  [Excel 97-2003 `.xls` workbooks open](docs/xls-import.md) with their formulas and formatting.
   [XLSB worksheet data can be imported](docs/xlsb-import.md), using saved values instead of formulas.
   [ODS worksheet data can be imported](docs/ods-import.md), using saved values instead of formulas.
   [Static pictures can live inside cells](docs/cell-pictures.md), fitting their size and moving with the data.
@@ -200,7 +201,7 @@ compatibility are still rough. It covers 89% of the Excel ribbon commands in our
 ([`docs/parity-checklist.md`](docs/parity-checklist.md)) and 501 of Excel's 523 worksheet functions
 ([`docs/function-parity.md`](docs/function-parity.md)); weighted by what Excel users rely on, we
 estimate it is about 50% ready for real work. Next up: XLSX fidelity on real-world files, very large
-workbooks and multi-threaded recalc, chart depth, text in every script, and `.xls` import. Stage,
+workbooks and multi-threaded recalc, chart depth, text in every script, and password-protected workbooks. Stage,
 numbers and estimates are in [ROADMAP.md](ROADMAP.md); the ranked work list is [`docs/gaps.md`](docs/gaps.md).
 
 ## Downloads
