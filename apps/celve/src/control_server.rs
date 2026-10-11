@@ -134,7 +134,10 @@ mod tests {
             let mut r = BufReader::new(s);
             let mut out = vec![];
             for l in lines {
-                writeln!(w, "{l}").unwrap();
+                // A refused connection may already be closed: a failed write ends the talk.
+                if writeln!(w, "{l}").is_err() {
+                    break;
+                }
                 let mut reply = String::new();
                 if r.read_line(&mut reply).unwrap_or(0) == 0 {
                     break;
