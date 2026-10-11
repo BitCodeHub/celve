@@ -4,6 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
   <title>Celve</title>
+  <meta name="description" content="Celve: spreadsheets with Sage, an assistant that sees your sheets and builds them with you. Runs in the browser, nothing to install.">
+  <meta name="theme-color" content="#107C41">
+  <link data-trunk rel="copy-file" href="assets/favicon.png" />
+  <link data-trunk rel="copy-file" href="assets/icon-192.png" />
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="apple-touch-icon" href="icon-192.png">
   <link data-trunk rel="rust" data-bin="celve-web" data-wasm-opt="z" data-weak-refs />
   <style>
     html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #f3f3f3; }
@@ -14,6 +20,6 @@
 </head>
 <body>
   <canvas id="celve_canvas"></canvas>
-  <div id="celve_loading">Loading Celve&hellip;</div>
+  <div id="celve_loading"><img src="icon-192.png" width="96" height="96" alt=""><p>Loading Celve&hellip;</p></div>
 </body>
 </html>

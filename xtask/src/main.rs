@@ -31,7 +31,7 @@ commands:
                   print or set the workspace version ([workspace.package] in Cargo.toml)
   stats [--exact] count tests and lines per crate (--exact: ask the test harness via `-- --list`)
   ico <out.ico> <in.png>...
-                  pack square PNGs (<= 256 px) into a Windows .ico (see packaging/icons.sh)
+                  pack square PNGs (<= 256 px) into a Windows .ico (see packaging/icons.py)
 ";
 
 fn main() -> ExitCode {

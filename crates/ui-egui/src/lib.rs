@@ -741,7 +741,7 @@ pub fn clean_error(e: &str) -> String {
     e.to_string()
 }
 
-#[allow(clippy::disallowed_methods)] // the clock is read only off wasm
+#[allow(clippy::disallowed_methods)] // `SystemTime` is read only off wasm; the browser uses `Date.now()`
 pub fn now_ms() -> f64 {
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -750,7 +750,9 @@ pub fn now_ms() -> f64 {
     }
     #[cfg(target_arch = "wasm32")]
     {
-        0.0
+        // The browser's clock (ms since the epoch); without it timers like screenshots, toasts
+        // and fades never advance on the web.
+        js_sys::Date::now()
     }
 }
 

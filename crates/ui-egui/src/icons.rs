@@ -490,8 +490,10 @@ pub fn paint(p: &Painter, rect: Rect, icon: Icon, c: Color32) {
                 g.poly(&[(cx, cy - r), (cx + k, cy), (cx, cy + r), (cx - k, cy)], col);
                 g.poly(&[(cx - r, cy), (cx, cy - k), (cx + r, cy), (cx, cy + k)], col);
             };
-            star(7.0, 9.0, 6.0, GREEN);
-            star(12.8, 3.6, 2.6, PURPLE);
+            // White on a coloured badge (the grid's agent tag), brand colours elsewhere.
+            let (big, small) = if c == Color32::WHITE { (Color32::WHITE, Color32::WHITE) } else { (GREEN, PURPLE) };
+            star(7.0, 9.0, 6.0, big);
+            star(12.8, 3.6, 2.6, small);
         }
         Icon::Comment | Icon::Note => {
             g.poly(

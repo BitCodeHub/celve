@@ -901,6 +901,41 @@ fn paint_cf_icon(p: &Painter, r: Rect, set: &str, idx: usize) {
     }
 }
 
+/// Where Sage (or another agent) is working: a green outline with a "Sage" tag that fades out,
+/// solid for changes, dashed for reads, so people can watch it work.
+fn paint_agent_focus(p: &Painter, geo: &Geo, sh: &Sheet, app: &SheetApp) {
+    let Some(f) = &app.sage.focus else { return };
+    if f.sheet.as_deref().is_some_and(|s| !s.eq_ignore_ascii_case(&sh.name)) {
+        return;
+    }
+    let age = crate::now_ms() - f.at;
+    if !(0.0..crate::sage::FOCUS_MS).contains(&age) {
+        return;
+    }
+    let fade = (1.0 - (age / crate::sage::FOCUS_MS) as f32).clamp(0.0, 1.0);
+    let green = Color32::from_rgb(0x10, 0x9C, 0x52);
+    let rr = geo.range_rect(sh, f.range).expand(1.0).intersect(geo.cells);
+    if rr.width() <= 0.0 || rr.height() <= 0.0 {
+        return;
+    }
+    if f.write {
+        p.rect_filled(rr, 0.0, green.gamma_multiply(0.14 * fade));
+        p.rect_stroke(rr, 2.0, Stroke::new(2.5, green.gamma_multiply(fade)), StrokeKind::Middle);
+    } else {
+        let pts = [rr.left_top(), rr.right_top(), rr.right_bottom(), rr.left_bottom(), rr.left_top()];
+        p.extend(egui::Shape::dashed_line(&pts, Stroke::new(2.0, green.gamma_multiply(fade)), 5.0, 3.0));
+    }
+    // The tag, just above the top-left corner (inside the grid when the range starts at row 1).
+    let font = crate::theme::ui_bold(11.0);
+    let galley = p.layout_no_wrap("Sage".into(), font, Color32::WHITE.gamma_multiply(fade));
+    let size = vec2(galley.size().x + 26.0, 18.0);
+    let top = if rr.top() - size.y >= geo.cells.top() { rr.top() - size.y } else { rr.top() };
+    let tag = Rect::from_min_size(pos2(rr.left(), top), size);
+    p.rect_filled(tag, 4.0, green.gamma_multiply(fade));
+    crate::icons::paint(p, Rect::from_min_size(tag.min + vec2(4.0, 2.0), vec2(14.0, 14.0)), crate::icons::Icon::Sage, Color32::WHITE);
+    p.galley(tag.min + vec2(21.0, (size.y - galley.size().y) / 2.0), galley, Color32::WHITE);
+}
+
 fn paint_selection(p: &Painter, geo: &Geo, sh: &Sheet, sel: &gridcraft_engine::Selection, t: &Tokens, app: &SheetApp) {
     // Fill all areas except the active cell.
     for r in &sel.ranges {
@@ -962,6 +997,7 @@ fn paint_selection(p: &Painter, geo: &Geo, sh: &Sheet, sel: &gridcraft_engine::S
         let rr = geo.range_rect(sh, moved);
         p.rect_stroke(rr, 0.0, Stroke::new(2.0, Color32::from_gray(110)), StrokeKind::Middle);
     }
+    paint_agent_focus(p, geo, sh, app);
     // Marching ants around the copied range.
     if let Some(clip) = &app.session.clipboard
         && app.session.active().is_some_and(|d| d.uid == clip.doc_uid && d.wb.active_sheet == clip.sheet)

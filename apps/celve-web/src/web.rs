@@ -1,7 +1,9 @@
 //! The browser shell: web `Services`, drag-and-drop, and the eframe web runner.
 
 use gridcraft_engine::Session;
-use gridcraft_ui_egui::{Inbox, Services, SheetApp};
+use gridcraft_ui_egui::{ControlRequest, Inbox, Services, SheetApp};
+
+use crate::sage_ws::{Requests, WebSage};
 use wasm_bindgen::JsCast as _;
 
 const CANVAS_ID: &str = "celve_canvas";
@@ -32,12 +34,25 @@ pub fn start() {
                     let inbox: Inbox = Inbox::default();
                     let mut session = Session::new();
                     let q = query();
-                    if let Some(name) = q.split(['?', '&']).find_map(|kv| kv.strip_prefix("sample=")) {
-                        let _ = session.execute("file.new", serde_json::json!({"sample": name}));
-                    } else if q.contains("sample") {
-                        let _ = session.execute("file.new", serde_json::json!({"sample": "sales"}));
+                    match param(&q, "sample").as_deref() {
+                        Some("") => {
+                            let _ = session.execute("file.new", serde_json::json!({"sample": "sales"}));
+                        }
+                        Some(name) => {
+                            let _ = session.execute("file.new", serde_json::json!({"sample": name}));
+                        }
+                        None => {}
                     }
                     let mut app = SheetApp::new(session, services(inbox.clone(), cc.egui_ctx.clone()));
+                    // Sage runs on the server; its requests run here, on the live workbook.
+                    let sage = WebSage::connect(cc.egui_ctx.clone());
+                    app.services.sage = Some(Box::new(sage.clone()));
+                    let (control_tx, control_rx) = std::sync::mpsc::channel::<ControlRequest>();
+                    app.control_rx = Some(control_rx);
+                    let ask = param(&q, "ask").filter(|a| !a.trim().is_empty());
+                    if param(&q, "sage").is_some() || ask.is_some() {
+                        let _ = app.run("view.sage", serde_json::json!({"on": true}));
+                    }
                     // Follow the browser's language, except a CJK one: the web build has no system
                     // CJK fonts (none are bundled), so that interface would render as tofu.
                     let browser = gridcraft_ui_egui::i18n::Language::system();
@@ -48,7 +63,7 @@ pub fn start() {
                         app.ui.language = browser;
                     }
                     SheetApp::setup_context_for_language(&cc.egui_ctx, false, app.ui.language);
-                    Ok(Box::new(WebShell { app, inbox }))
+                    Ok(Box::new(WebShell { app, inbox, sage, control_tx, requests: Requests::default(), pictures: Inbox::default(), ask }))
                 }),
             )
             .await;
@@ -61,6 +76,14 @@ pub fn start() {
     });
 }
 
+/// One `?key=value` (or bare `?key`, as "") from the query string, percent-decoded.
+fn param(query: &str, key: &str) -> Option<String> {
+    query.trim_start_matches('?').split('&').find_map(|kv| {
+        let (k, v) = kv.split_once('=').unwrap_or((kv, ""));
+        (k == key).then(|| js_sys::decode_uri_component(&v.replace('+', " ")).ok().and_then(|s| s.as_string()).unwrap_or_else(|| v.to_string()))
+    })
+}
+
 fn query() -> String {
     web_sys::window().and_then(|w| w.location().search().ok()).unwrap_or_default()
 }
@@ -68,13 +91,21 @@ fn query() -> String {
 struct WebShell {
     app: SheetApp,
     inbox: Inbox,
+    sage: WebSage,
+    control_tx: std::sync::mpsc::Sender<ControlRequest>,
+    requests: Requests,
+    /// Pictures dropped while the Sage pane is open, read asynchronously.
+    pictures: Inbox,
+    /// `?ask=…`: a message for Sage, sent as soon as Sage is connected.
+    ask: Option<String>,
 }
 
 impl eframe::App for WebShell {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let dropped = ctx.input_mut(|i| std::mem::take(&mut i.raw.dropped_files));
         for f in dropped {
-            let inbox = self.inbox.clone();
+            let to_sage = self.app.sage.open && f.path().file_name().is_some_and(|n| gridcraft_ui_egui::sage::is_picture_name(&n.to_string_lossy()));
+            let inbox = if to_sage { self.pictures.clone() } else { self.inbox.clone() };
             let ctx = ctx.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 let name = f.path().file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "dropped.xlsx".into());
@@ -87,7 +118,34 @@ impl eframe::App for WebShell {
                 }
             });
         }
+        for (name, bytes) in std::mem::take(&mut *self.pictures.lock().unwrap_or_else(std::sync::PoisonError::into_inner)) {
+            let result = gridcraft_ui_egui::sage::SagePicture::from_bytes(&name, bytes)
+                .ok_or_else(|| format!("{name} isn't a picture Sage can read (PNG, JPEG, GIF or WebP under 5 MB)."))
+                .and_then(|p| self.app.sage.attach(p));
+            if let Err(e) = result {
+                self.app.toast = Some((e, gridcraft_ui_egui::now_ms()));
+            }
+        }
+        if self.ask.is_some()
+            && gridcraft_ui_egui::sage::SageHost::availability(&self.sage).is_ok()
+            && let Some(text) = self.ask.take()
+            && let Err(e) = self.app.run("sage.ask", serde_json::json!({"text": text}))
+        {
+            log::warn!("?ask: {e}");
+        }
+        // Sage's requests join the control queue the app drains in `logic`.
+        for (rid, method, params) in self.sage.take_requests() {
+            if let Some(reply) = self.requests.submit(&self.control_tx, rid, method, params) {
+                self.sage.reply(rid, reply);
+            }
+        }
         self.app.logic(ctx);
+        for (rid, reply) in self.requests.ready() {
+            self.sage.reply(rid, reply);
+        }
+        if self.requests.busy() {
+            ctx.request_repaint();
+        }
     }
 
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {

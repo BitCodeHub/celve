@@ -271,11 +271,9 @@ the publisher.
 
 ## Icons
 
-`assets/app-icon/celve.svg` is a **placeholder** (an original ledger-page drawing on
-Celve green) until the owner makes Celve's engraved creature portrait (craftrules
-`standards/icon-design.md`). `packaging/icons.sh` regenerates the 1024 px PNG, the macOS 512 px
-PNG, the `.icns` (iconutil), the `.ico` (`cargo xtask ico`) and the hicolor PNGs from it; it
-needs `resvg`. The outputs are committed, so packaging never needs those tools. Every file has a
+`assets/app-icon/celve-master.png` is the canonical artwork (designed by Astra, 2026-10-11).
+`python3 packaging/icons.py` regenerates the 1024 px PNG, the macOS 512 px PNG, the `.icns` (iconutil),
+the `.ico`, the hicolor PNGs, the scalable SVG wrapper and the web favicons from it; it needs Pillow. The outputs are committed, so packaging never needs those tools. Every file has a
 row in `ATTRIBUTION.md` (`cargo xtask assets`).
 
 ## Checks

@@ -120,6 +120,10 @@ pub struct Chat {
     pub attachments: Vec<SagePicture>,
     /// A reply is in progress.
     pub busy: bool,
+    /// Pictures picked with the browser's (asynchronous) picker, attached when they arrive.
+    picture_inbox: Option<crate::Inbox>,
+    /// Where an agent is working right now (drawn on the grid so people can watch).
+    pub focus: Option<Focus>,
     scroll_to_end: bool,
     focus_input: bool,
 }
@@ -179,6 +183,57 @@ impl Chat {
         self.attachments.push(p);
         Ok(())
     }
+}
+
+/// The range an agent just read or changed, shown on the grid for a moment.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Focus {
+    /// Sheet name; `None` for the active sheet.
+    pub sheet: Option<String>,
+    pub range: gridcraft_engine::core::RangeRef,
+    /// It changed cells (solid outline) rather than reading them (dashed).
+    pub write: bool,
+    pub at: f64,
+}
+
+/// How long the outline stays after the last action (ms).
+pub const FOCUS_MS: f64 = 2500.0;
+
+/// Notes where a control request (an agent's command) is about to act, so the grid can show it.
+pub fn note_request(app: &mut SheetApp, method: &str, p: &Json) {
+    let (command, params) = match method {
+        "engine.execute" | "command" | "ui.menu.invoke" => {
+            (p.get("command").or_else(|| p.get("id")).and_then(Json::as_str).unwrap_or(""), p.get("params").unwrap_or(&Json::Null))
+        }
+        other => (other, p),
+    };
+    if let Some(f) = focus_of(command, params) {
+        app.sage.focus = Some(Focus { at: crate::now_ms(), ..f });
+    }
+}
+
+/// The range a command touches, from its `range`/`cell` parameter (and the size of `values`).
+pub fn focus_of(command: &str, params: &Json) -> Option<Focus> {
+    let write = !matches!(command, "sheet.read" | "cell.get" | "formulas.evaluate" | "selection.set");
+    if command == "selection.set" || command.starts_with("ui.") || command.starts_with("file.") {
+        return None;
+    }
+    let text = params.get("range").or_else(|| params.get("cell")).and_then(Json::as_str)?;
+    let (sheet, body) = match text.rsplit_once('!') {
+        Some((s, b)) => (Some(s.trim_matches('\'').replace("''", "'")), b),
+        None => (None, text),
+    };
+    let first = body.split(',').next().unwrap_or(body);
+    let mut range = gridcraft_engine::core::RangeRef::parse(first.trim())?;
+    // `range.setValues {range: "A1", values: [[…]]}` fills a block from its top-left cell.
+    if range.is_single()
+        && let Some(rows) = params.get("values").and_then(Json::as_array)
+    {
+        let h = rows.len().clamp(1, 1_048_576) as i64;
+        let w = rows.iter().filter_map(Json::as_array).map(Vec::len).max().unwrap_or(1).clamp(1, 16_384) as i64;
+        range = gridcraft_engine::core::RangeRef::new(range.start, range.start.offset_clamped(h - 1, w - 1));
+    }
+    Some(Focus { sheet, range, write, at: 0.0 })
 }
 
 /// A short description of the workbook for the assistant (so it rarely needs to ask).
@@ -307,6 +362,19 @@ fn reset(app: &mut SheetApp) {
 
 /// Picks up the host's events (call every frame).
 pub fn poll(app: &mut SheetApp, ctx: &egui::Context) {
+    let picked: Vec<(String, Vec<u8>)> = app
+        .sage
+        .picture_inbox
+        .as_ref()
+        .map(|i| std::mem::take(&mut *i.lock().unwrap_or_else(std::sync::PoisonError::into_inner)))
+        .unwrap_or_default();
+    for (name, bytes) in picked {
+        let r =
+            SagePicture::from_bytes(&name, bytes).ok_or_else(|| format!("{name} isn't a picture Sage can read.")).and_then(|p| app.sage.attach(p));
+        if let Err(e) = r {
+            app.toast = Some((e, crate::now_ms()));
+        }
+    }
     let Some(h) = app.services.sage.as_mut() else { return };
     let events = h.poll();
     let changed = !events.is_empty();
@@ -320,6 +388,9 @@ pub fn poll(app: &mut SheetApp, ctx: &egui::Context) {
     }
     if app.sage.busy {
         ctx.request_repaint_after(std::time::Duration::from_millis(120));
+    }
+    if app.sage.focus.as_ref().is_some_and(|f| crate::now_ms() - f.at < FOCUS_MS) {
+        ctx.request_repaint_after(std::time::Duration::from_millis(33));
     }
 }
 
@@ -505,6 +576,14 @@ fn composer(app: &mut SheetApp, ui: &mut Ui, t: &Tokens) {
 }
 
 fn attach_from_picker(app: &mut SheetApp) {
+    if app.services.pick_picture.is_none()
+        && let Some(pick) = &app.services.pick_picture_async
+    {
+        let inbox = crate::Inbox::default();
+        app.sage.picture_inbox = Some(inbox.clone());
+        pick(inbox);
+        return;
+    }
     let Some(pick) = &app.services.pick_picture else { return };
     let Some(path) = pick() else { return };
     let name = std::path::Path::new(&path).file_name().and_then(|n| n.to_str()).unwrap_or("picture").to_string();
@@ -713,6 +792,22 @@ mod tests {
         assert!(c.attach(p).is_err());
         assert!(is_picture_name("Receipt.JPG"));
         assert!(!is_picture_name("book.xlsx"));
+    }
+
+    #[test]
+    fn focus_follows_the_command() {
+        let f = focus_of("range.setValues", &json!({"range": "Budget!B2", "values": [[1, 2, 3], [4, 5, 6]]})).unwrap();
+        assert_eq!((f.sheet.as_deref(), f.range.a1().as_str(), f.write), (Some("Budget"), "B2:D3", true));
+        let f = focus_of("sheet.read", &json!({"range": "A1:C9"})).unwrap();
+        assert!(!f.write);
+        assert_eq!(focus_of("home.bold", &json!({"range": "'My Sheet'!A1:A2"})).unwrap().sheet.as_deref(), Some("My Sheet"));
+        assert_eq!(focus_of("insert.chart", &json!({"range": "A1:G1,A7:G7"})).unwrap().range.a1(), "A1:G1");
+        assert!(focus_of("home.bold", &json!({})).is_none());
+        assert!(focus_of("selection.set", &json!({"range": "A1"})).is_none());
+        assert!(focus_of("cell.set", &json!({"cell": "not a cell"})).is_none());
+        // Hostile sizes are clamped to the sheet.
+        let huge: Vec<Json> = vec![json!([1]); 3];
+        assert!(focus_of("range.setValues", &json!({"range": "XFD1048576", "values": huge})).is_some());
     }
 
     #[test]

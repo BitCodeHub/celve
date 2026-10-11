@@ -10,4 +10,4 @@ either of
 
 at your option.
 
-Regenerate the derived files with packaging/icons.sh.
+Regenerate the derived files with packaging/icons.py.

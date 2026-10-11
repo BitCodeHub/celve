@@ -157,6 +157,7 @@ fn filter_commands(commands: Vec<Json>, search: Option<&str>) -> Vec<Json> {
 }
 
 pub fn handle(app: &mut SheetApp, ctx: &egui::Context, method: &str, p: &Json) -> Outcome {
+    crate::sage::note_request(app, method, p);
     let s = |k: &str| p.get(k).and_then(Json::as_str);
     let f = |k: &str| p.get(k).and_then(Json::as_f64).unwrap_or(0.0) as f32;
     let out = match method {

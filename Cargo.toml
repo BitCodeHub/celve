@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["crates/*", "apps/*", "xtask"]
-default-members = ["crates/*", "apps/celve", "apps/celve-cli", "xtask"]
+default-members = ["crates/*", "apps/celve", "apps/celve-cli", "apps/celve-server", "xtask"]
 
 [workspace.package]
 version = "0.5.0"
@@ -24,6 +24,7 @@ gridcraft-engine = { path = "crates/engine" }
 gridcraft-ui-egui = { path = "crates/ui-egui" }
 gridcraft-mcp = { path = "crates/mcp" }
 gridcraft-pdf = { path = "crates/pdf" }
+celve-sage = { path = "crates/sage" }
 
 # foundation
 thiserror = "2"
