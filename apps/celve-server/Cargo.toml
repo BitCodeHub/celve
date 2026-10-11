@@ -18,3 +18,8 @@ axum = { version = "0.8", default-features = false, features = ["http1", "tokio"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time"] }
 tower-http = { version = "0.6", features = ["fs"] }
 env_logger = { version = "0.11", default-features = false, features = ["auto-color", "humantime"] }
+jsonwebtoken = "9"
+ureq = "2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros"] }

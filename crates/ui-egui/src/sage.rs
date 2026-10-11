@@ -94,6 +94,10 @@ pub trait SageHost {
     fn reset(&mut self);
     /// Events since the last call.
     fn poll(&mut self) -> Vec<SageEvent>;
+    /// Where to sign in when Sage needs it (shown as a button while Sage is unavailable).
+    fn sign_in(&self) -> Option<String> {
+        None
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -421,7 +425,13 @@ pub fn show(app: &mut SheetApp, ui: &mut Ui) {
             let available = app.services.sage.as_ref().map(|h| h.availability()).unwrap_or_else(|| Err("Sage runs in the Celve desktop app.".into()));
             header(app, ui, &t, &available);
             ui.add_space(6.0);
-            let composer_h = if available.is_ok() { 132.0 + if app.sage.attachments.is_empty() { 0.0 } else { 30.0 } } else { 0.0 };
+            let signs_in = available.is_err() && app.services.sage.as_ref().is_some_and(|h| h.sign_in().is_some());
+            // Room under the list for the composer, or for the card saying why Sage can't run.
+            let composer_h = match &available {
+                Ok(()) => 132.0 + if app.sage.attachments.is_empty() { 0.0 } else { 30.0 },
+                Err(_) if signs_in => 112.0,
+                Err(_) => 80.0,
+            };
             let list_h = (ui.available_height() - composer_h).max(80.0);
             egui::ScrollArea::vertical().max_height(list_h).auto_shrink([false, false]).stick_to_bottom(true).show(ui, |ui| {
                 ui.set_width(ui.available_width());
@@ -443,9 +453,16 @@ pub fn show(app: &mut SheetApp, ui: &mut Ui) {
             match available {
                 Ok(()) => composer(app, ui, &t),
                 Err(why) => {
+                    let sign_in = app.services.sage.as_ref().and_then(|h| h.sign_in());
                     ui.add_space(8.0);
                     card(ui, &t, |ui| {
                         ui.label(RichText::new(why).color(t.text_dim));
+                        if let Some(url) = sign_in {
+                            ui.add_space(8.0);
+                            if sign_in_button(ui, &t).clicked() {
+                                ui.ctx().open_url(egui::OpenUrl::same_tab(url));
+                            }
+                        }
                     });
                 }
             }
@@ -493,6 +510,15 @@ pub fn ask_button(ui: &mut Ui, open: bool, busy: bool) -> egui::Response {
     crate::icons::paint(p, Rect::from_min_size(r.min + vec2(9.0, 5.0), vec2(16.0, 16.0)), Icon::Sage, Color32::WHITE);
     p.galley(pos2(r.left() + 29.0, r.center().y - galley.size().y / 2.0), galley, Color32::WHITE);
     resp.on_hover_text("Sage: ask anything, or let Sage build it (⌘⇧I)").on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+/// The pill that opens the sign-in page.
+fn sign_in_button(ui: &mut Ui, t: &Tokens) -> egui::Response {
+    let galley = ui.painter().layout_no_wrap("Sign in".into(), theme::ui_bold(13.0), Color32::WHITE);
+    let (r, resp) = ui.allocate_exact_size(vec2(galley.size().x + 36.0, 30.0), egui::Sense::click());
+    ui.painter().rect_filled(r, 15.0, if resp.hovered() { t.accent_dark } else { t.accent });
+    ui.painter().galley(r.center() - galley.size() / 2.0, galley, Color32::WHITE);
+    resp.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
 /// The status bar's live line while Sage works ("Sage is editing B2:D9").

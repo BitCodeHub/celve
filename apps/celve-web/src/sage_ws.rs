@@ -30,6 +30,9 @@ struct State {
     /// Control requests from Sage waiting to run: (rid, method, params).
     requests: Vec<(u64, String, Json)>,
     warm_wanted: bool,
+    /// The server's sign-in page, when Sage is behind sign-in (from the page's
+    /// `<meta name="celve-signin">`).
+    signin: Option<String>,
 }
 
 #[derive(Clone)]
@@ -40,7 +43,8 @@ pub struct WebSage {
 
 impl WebSage {
     pub fn connect(ctx: egui::Context) -> Self {
-        let s = WebSage { state: Rc::new(RefCell::new(State::default())), ctx };
+        let signin = signin_page();
+        let s = WebSage { state: Rc::new(RefCell::new(State { signin, ..State::default() })), ctx };
         s.open_socket();
         s
     }
@@ -96,6 +100,8 @@ impl WebSage {
                 if was {
                     st.offline = Some("Sage got disconnected. Reconnecting…".into());
                     st.events.push(SageEvent::Error("Sage got disconnected. Reconnecting…".into()));
+                } else if st.signin.is_some() {
+                    st.offline = Some("Sign in to use Sage.".into());
                 } else if st.offline.is_none() {
                     st.offline =
                         Some("Sage needs the Celve server: open Celve from its server address (and include ?key=… if it has an access key).".into());
@@ -159,6 +165,12 @@ impl WebSage {
     }
 }
 
+/// The sign-in page the server named in `<meta name="celve-signin" content="/signin">`.
+fn signin_page() -> Option<String> {
+    let meta = web_sys::window()?.document()?.query_selector("meta[name=celve-signin]").ok()??;
+    meta.get_attribute("content").filter(|c| c.starts_with('/'))
+}
+
 /// The pane's event for one `{kind, value}` from the server.
 fn event(v: &Json) -> Option<SageEvent> {
     let value = v.get("value");
@@ -210,6 +222,11 @@ impl SageHost for WebSage {
 
     fn poll(&mut self) -> Vec<SageEvent> {
         std::mem::take(&mut self.state.borrow_mut().events)
+    }
+
+    fn sign_in(&self) -> Option<String> {
+        let st = self.state.borrow();
+        if st.open { None } else { st.signin.clone() }
     }
 }
 

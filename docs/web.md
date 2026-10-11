@@ -26,9 +26,28 @@ fixed key).
 | `--dist` | `CELVE_WEB_DIST` | `dist/web` | the trunk build |
 | `--access-key` | `CELVE_ACCESS_KEY` | generated per run | required as `?key=…` to use Sage; set a long random one for any server others can reach |
 | | `CELVE_ALLOWED_ORIGINS` | none | extra page origins allowed to connect (comma-separated) |
+| | `CELVE_ACCESS_TEAM`, `CELVE_ACCESS_AUD`, `CELVE_ALLOWED_EMAILS` | none | sign-in through Cloudflare Access instead of a key (all three together; see below) |
 
 Links: `?sample=sales` opens a sample, `?sage` opens the Sage pane, `?ask=…` opens it with a
 message typed in (never sent automatically, so a link can't make Sage act on your sheet).
+
+## Sign-in instead of a key
+
+A key in a link can leak (history, screenshots, a pasted URL). For a server on the internet, put
+Sage behind sign-in: a Cloudflare Access application covering `<host>/ws` and `<host>/signin`,
+with a policy allowing the people's email addresses (one-time code by email works without any
+other account). Then set the team domain (`https://<team>.cloudflareaccess.com`), the
+application's audience tag and the same emails. The server then:
+
+- ignores `?key=`, and refuses `/ws` unless the request carries a valid Access pass
+  (`Cf-Access-Jwt-Assertion`): RS256, signed by the team's published keys, for this audience and
+  issuer, not expired, for an allowed email. Checking it here, not only at the edge, means a
+  request that reaches the server another way still gets no Sage;
+- marks the page (`<meta name="celve-signin">`) so the Sage pane shows a **Sign in** button,
+  which opens `/signin`; after sign-in Access returns there and the server sends you back to the
+  app.
+
+The spreadsheet itself stays open to everyone; only Sage is private.
 
 ## How it works
 

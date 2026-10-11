@@ -118,7 +118,7 @@ fn main() {
                 if let Some(path) = &sage {
                     let v: serde_json::Value = serde_json::from_slice(&std::fs::read(path).expect("read transcript")).expect("transcript JSON");
                     let v = v.get("result").cloned().unwrap_or(v);
-                    app.services.sage = Some(Box::new(StandIn));
+                    app.services.sage = Some(Box::new(StandIn(v["signin"].as_str().map(String::from))));
                     app.sage.open = true;
                     for m in v["messages"].as_array().cloned().unwrap_or_default() {
                         let role = match m["role"].as_str() {
@@ -146,12 +146,16 @@ fn main() {
     eprintln!("wrote {out} ({}x{})", img.width(), img.height());
 }
 
-/// An always-available assistant that never answers (renders only).
-struct StandIn;
+/// An assistant that never answers (renders only): available, or waiting for sign-in when the
+/// transcript has `"signin": "/signin"`.
+struct StandIn(Option<String>);
 
 impl sage::SageHost for StandIn {
     fn availability(&self) -> Result<(), String> {
-        Ok(())
+        if self.0.is_some() { Err("Sign in to use Sage.".into()) } else { Ok(()) }
+    }
+    fn sign_in(&self) -> Option<String> {
+        self.0.clone()
     }
     fn warm_up(&mut self) {}
     fn send(&mut self, _: &str, _: &[sage::SagePicture], _: &str) {}

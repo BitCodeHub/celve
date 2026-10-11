@@ -4,6 +4,9 @@
 //! celve-server [--port 8780] [--bind 127.0.0.1] [--dist dist/web] [--access-key KEY]
 //! ```
 //!
+//! Who may use Sage: either an access key (`?key=…` on the page address), or sign-in through
+//! Cloudflare Access for a list of email addresses (see `access.rs`), which replaces the key.
+//!
 //! The workbook lives in the browser. Each tab opens a WebSocket (`/ws`) and gets its own Sage:
 //! an assistant process whose only spreadsheet tools are Celve's MCP tools, served by this
 //! executable in bridge mode (`celve-server --mcp-bridge <port>`). The bridge talks to a private,
@@ -18,6 +21,8 @@
 //! - browser → server: `{"t":"sage.send","text","context","pictures":[{name,mime,data}]}`,
 //!   `{"t":"sage.stop"}`, `{"t":"sage.reset"}`, `{"t":"sage.warm"}`, `{"t":"ctl.reply","rid":n,"reply":{ok,…}}`
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
+
+mod access;
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write as _};
@@ -56,6 +61,10 @@ struct Config {
     local_only: bool,
     /// Extra page origins allowed to connect (`CELVE_ALLOWED_ORIGINS`, comma-separated).
     allowed_origins: Arc<Vec<String>>,
+    /// Sign-in through Cloudflare Access; when set, it replaces the access key.
+    gate: Option<Arc<access::Gate>>,
+    /// The app's index page (with the sign-in marker when sign-in is on).
+    index: Arc<String>,
     workroot: PathBuf,
     sessions: Arc<AtomicUsize>,
     next_id: Arc<AtomicU64>,
@@ -94,9 +103,25 @@ fn main() {
         log::error!("no web build at {} (run `trunk build --release` in apps/celve-web, or pass --dist)", dist.display());
         std::process::exit(2);
     }
+    let gate = match access::Gate::from_env() {
+        Some(Ok(g)) => Some(g),
+        Some(Err(e)) => {
+            eprintln!("celve-server: {e}");
+            std::process::exit(2);
+        }
+        None => None,
+    };
+    let index = match std::fs::read_to_string(dist.join("index.html")) {
+        Ok(page) if gate.is_some() => page.replacen("</head>", "<meta name=\"celve-signin\" content=\"/signin\">\n</head>", 1),
+        Ok(page) => page,
+        Err(e) => {
+            eprintln!("celve-server: {}: {e} (build the web app first)", dist.join("index.html").display());
+            std::process::exit(2);
+        }
+    };
     // Sage always needs a key: without one, any page running in your browser could reach a local
     // server. When none is configured, make one for this run and print the link that carries it.
-    let generated = access_key.is_none();
+    let generated = access_key.is_none() && gate.is_none();
     let access_key = access_key.unwrap_or_else(|| celve_sage::new_token().chars().take(24).collect());
     let access_key_shown = access_key.clone();
     let config = Config {
@@ -110,6 +135,8 @@ fn main() {
                 .filter(|o| !o.is_empty())
                 .collect(),
         ),
+        gate: gate.clone(),
+        index: Arc::new(index),
         workroot: std::env::temp_dir().join("celve-sage"),
         sessions: Arc::new(AtomicUsize::new(0)),
         next_id: Arc::new(AtomicU64::new(1)),
@@ -125,6 +152,10 @@ fn main() {
         let app = Router::new()
             .route("/ws", get(ws_handler))
             .route("/healthz", get(|| async { "ok" }))
+            .route("/", get(index_page))
+            .route("/index.html", get(index_page))
+            // Cloudflare Access guards this page: arriving here means sign-in is done.
+            .route("/signin", get(|| async { axum::response::Redirect::to("/") }))
             .fallback_service(tower_http::services::ServeDir::new(&dist).append_index_html_on_directories(true))
             .with_state(config);
         let listener = match tokio::net::TcpListener::bind((bind.as_str(), port)).await {
@@ -136,7 +167,9 @@ fn main() {
         };
         let shown = if bind == "0.0.0.0" { "127.0.0.1" } else { bind.as_str() };
         log::info!("Celve Web (app from {})", dist.display());
-        if generated {
+        if let Some(g) = &gate {
+            log::info!("Sage needs sign-in through {} for: {}", g.team(), g.emails().join(", "));
+        } else if generated {
             log::info!("open http://{shown}:{port}/?key={access_key_shown}  (key generated for this run; set CELVE_ACCESS_KEY to keep one)");
         } else {
             log::info!("open http://{shown}:{port}/?key=<your CELVE_ACCESS_KEY>");
@@ -165,10 +198,22 @@ async fn ws_handler(ws: WebSocketUpgrade, headers: HeaderMap, Query(q): Query<Ha
         log::warn!("refused a WebSocket for a non-local host name without an access key");
         return (StatusCode::FORBIDDEN, "set CELVE_ACCESS_KEY to serve Sage under this host name").into_response();
     }
-    if !q.get("key").is_some_and(|k| constant_time_eq(k.as_bytes(), config.access_key.as_bytes())) {
+    if let Some(gate) = &config.gate {
+        match gate.check(&headers).await {
+            Ok(email) => log::info!("Sage session for {email}"),
+            Err(why) => {
+                log::warn!("refused a WebSocket: {why}");
+                return (StatusCode::UNAUTHORIZED, "sign in to use Sage").into_response();
+            }
+        }
+    } else if !q.get("key").is_some_and(|k| constant_time_eq(k.as_bytes(), config.access_key.as_bytes())) {
         return (StatusCode::UNAUTHORIZED, "access key required").into_response();
     }
     ws.max_message_size(MAX_MESSAGE).on_upgrade(move |socket| session(socket, config))
+}
+
+async fn index_page(State(config): State<Config>) -> Response {
+    ([(header::CONTENT_TYPE, "text/html; charset=utf-8"), (header::CACHE_CONTROL, "no-cache")], config.index.as_str().to_string()).into_response()
 }
 
 /// Same-origin check: the `Origin` header's host must be the `Host` the page was served from (or
