@@ -71,6 +71,9 @@ pub enum SageEvent {
     Text(String),
     /// Sage did something (one short line: "Wrote B2:D9", "Looked at the screen").
     Step(String),
+    /// Take back the last this-many characters of reply text (narration that turned out to be
+    /// a note before a tool call rather than part of the answer).
+    Retract(usize),
     /// The reply is complete.
     Done,
     /// Something went wrong; the turn is over.
@@ -153,6 +156,12 @@ impl Chat {
                     r.steps.push(s);
                 }
                 self.scroll_to_end = true;
+            }
+            SageEvent::Retract(n) => {
+                if let Some(r) = self.messages.last_mut().filter(|m| m.role == Role::Sage) {
+                    let keep = r.text.chars().count().saturating_sub(n);
+                    r.text = r.text.chars().take(keep).collect();
+                }
             }
             SageEvent::Done => self.busy = false,
             SageEvent::Error(m) => {
@@ -617,6 +626,10 @@ mod tests {
         c.apply(SageEvent::Step("Looked at the screen".into()));
         c.apply(SageEvent::Text("Hello".into()));
         c.apply(SageEvent::Text(" there".into()));
+        c.apply(SageEvent::Text(" — note to self".into()));
+        c.apply(SageEvent::Retract(" — note to self".chars().count()));
+        c.apply(SageEvent::Retract(10_000));
+        c.apply(SageEvent::Text("Hello there".into()));
         c.apply(SageEvent::Done);
         assert!(!c.busy);
         assert_eq!(c.messages.len(), 1);

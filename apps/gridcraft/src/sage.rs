@@ -47,6 +47,7 @@ How to build well:
 - Before deleting sheets, clearing large ranges, or overwriting existing data the user didn't mention, ask first. Don't save or overwrite files unless asked; if asked to save, use save_workbook (it needs a path the first time; suggest ~/Documents/<name>.xlsx).
 
 Style:
+- Work silently: don't write notes or plans between tool calls (they show up in the reply). Write your answer once, at the end.
 - Keep replies short. After doing work, summarise what you did in 1-3 bullets and offer one useful next step.
 - Never mention your tools, MCP, commands' internal ids, the underlying AI model or its maker. If asked what you are or which model powers you, say you're Sage, GridCraft's assistant, and leave it there."#;
 
@@ -310,6 +311,10 @@ struct Translator {
     streamed: bool,
     /// The reply already has text (later text blocks start a new paragraph).
     has_text: bool,
+    /// Characters of text emitted for the current message (retracted if a tool call follows).
+    msg_chars: usize,
+    /// `has_text` before the current message started.
+    had_text: bool,
 }
 
 impl Translator {
@@ -324,10 +329,24 @@ impl Translator {
             Some("stream_event") => {
                 let e = v.get("event").unwrap_or(&Json::Null);
                 match e.get("type").and_then(Json::as_str) {
-                    Some("message_start") => self.streamed = false,
-                    Some("content_block_start") if e.pointer("/content_block/type").and_then(Json::as_str) == Some("text") && self.has_text => {
-                        out.push(SageEvent::Text("\n\n".into()));
+                    Some("message_start") => {
+                        self.streamed = false;
+                        self.msg_chars = 0;
+                        self.had_text = self.has_text;
                     }
+                    Some("content_block_start") => match e.pointer("/content_block/type").and_then(Json::as_str) {
+                        Some("text") if self.has_text => {
+                            self.msg_chars += 2;
+                            out.push(SageEvent::Text("\n\n".into()));
+                        }
+                        // Text before a tool call is narration, not the answer: take it back.
+                        Some("tool_use") if self.msg_chars > 0 => {
+                            out.push(SageEvent::Retract(self.msg_chars));
+                            self.msg_chars = 0;
+                            self.has_text = self.had_text;
+                        }
+                        _ => {}
+                    },
                     Some("content_block_delta") => {
                         if let Some(t) = e
                             .pointer("/delta/text")
@@ -336,6 +355,7 @@ impl Translator {
                         {
                             self.streamed = true;
                             self.has_text = true;
+                            self.msg_chars += t.chars().count();
                             out.push(SageEvent::Text(t.to_string()));
                         }
                     }
@@ -344,9 +364,10 @@ impl Translator {
             }
             Some("assistant") => {
                 let blocks = v.pointer("/message/content").and_then(Json::as_array).cloned().unwrap_or_default();
+                let calls_tools = blocks.iter().any(|b| b.get("type").and_then(Json::as_str) == Some("tool_use"));
                 for b in &blocks {
                     match b.get("type").and_then(Json::as_str) {
-                        Some("text") if !self.streamed => {
+                        Some("text") if !self.streamed && !calls_tools => {
                             if let Some(t) = b.get("text").and_then(Json::as_str).filter(|t| !t.is_empty()) {
                                 if self.has_text {
                                     out.push(SageEvent::Text("\n\n".into()));
@@ -579,6 +600,7 @@ mod tests {
             json!({"type": "stream_event", "event": {"type": "content_block_start", "content_block": {"type": "text"}}}),
             delta("On it"),
             delta("."),
+            json!({"type": "stream_event", "event": {"type": "content_block_start", "content_block": {"type": "tool_use"}}}),
             json!({"type": "assistant", "message": {"content": [
                 {"type": "text", "text": "On it."},
                 {"type": "tool_use", "name": "mcp__gridcraft__write_range", "input": {"range": "A1:C4", "values": [[1]]}},
@@ -594,8 +616,8 @@ mod tests {
             vec![
                 SageEvent::Text("On it".into()),
                 SageEvent::Text(".".into()),
+                SageEvent::Retract(6),
                 SageEvent::Step("Wrote A1:C4".into()),
-                SageEvent::Text("\n\n".into()),
                 SageEvent::Text("Done!".into()),
                 SageEvent::Done,
             ]
@@ -607,11 +629,13 @@ mod tests {
     #[test]
     fn unstreamed_text_still_arrives_and_errors_are_friendly() {
         let (events, _) = run(&[
+            json!({"type": "assistant", "message": {"content": [{"type": "text", "text": "thinking aloud"}, {"type": "tool_use", "name": "x", "input": {}}]}}),
             json!({"type": "assistant", "message": {"content": [{"type": "text", "text": "Hi"}]}}),
             json!({"type": "result", "is_error": true, "result": "API Error: 401 OAuth token has expired"}),
         ]);
-        assert_eq!(events[0], SageEvent::Text("Hi".into()));
-        match &events[1] {
+        assert_eq!(events[0], SageEvent::Step("Worked on it".into()));
+        assert_eq!(events[1], SageEvent::Text("Hi".into()));
+        match &events[2] {
             SageEvent::Error(m) => {
                 assert!(m.contains("sign in"), "{m}");
                 assert!(!m.contains("OAuth") && !m.contains("API"), "{m}");
