@@ -128,24 +128,31 @@ impl Sage {
         self.lock().in_turn = false;
     }
 
+    /// The assistant's MCP config: this executable in bridge mode. Holds no secrets: it goes on
+    /// the assistant's command line.
+    fn mcp_config(&self) -> Json {
+        let exe = self.exe.as_deref().map(|e| e.to_string_lossy().into_owned()).unwrap_or_default();
+        json!({"mcpServers": {SERVER: {"command": exe, "args": ["--mcp-bridge", self.port.to_string()]}}})
+    }
+
     fn spawn(&mut self) -> Result<(), String> {
         if self.alive() {
             return Ok(());
         }
         let cli = self.cli.clone().ok_or_else(not_installed)?;
-        let exe = self.exe.clone().ok_or("Sage couldn't find GridCraft's own executable.")?;
+        if self.exe.is_none() {
+            return Err("Sage couldn't find GridCraft's own executable.".into());
+        }
         std::fs::create_dir_all(&self.workdir).map_err(|e| format!("Sage couldn't create its folder: {e}"))?;
-        let mcp = json!({"mcpServers": {SERVER: {
-            "command": exe.to_string_lossy(),
-            "args": ["--mcp-bridge", self.port.to_string()],
-            "env": {TOKEN_ENV: self.token},
-        }}});
+        let mcp = self.mcp_config();
         let resume = self.lock().session_id.clone();
         let args = command_args(&mcp.to_string(), resume.as_deref(), std::env::var(MODEL_ENV).ok().as_deref());
         let mut cmd = Command::new(&cli);
         cmd.args(&args)
             .current_dir(&self.workdir)
             .env("PATH", search_path())
+            // The bridge inherits the token from here: never on a command line (visible in `ps`).
+            .env(TOKEN_ENV, &self.token)
             // Started from inside another assistant session (development), the child would refuse.
             .env_remove("CLAUDECODE")
             .env_remove("CLAUDE_CODE_ENTRYPOINT")
@@ -625,6 +632,15 @@ mod tests {
         assert_eq!(describe_step("mcp__gridcraft__insert_chart", &json!({"type": "pie"})), "Added a pie chart");
         assert_eq!(describe_step("WebSearch", &json!({"query": "fed rate"})), "Searched the web for “fed rate”");
         assert_eq!(describe_step("mystery", &Json::Null), "Worked on it");
+    }
+
+    #[test]
+    fn the_token_never_reaches_a_command_line() {
+        let sage = Sage::new(4242, "tok-123-secret".into(), std::env::temp_dir().join("gc-sage-test"), egui::Context::default());
+        let mcp = sage.mcp_config();
+        assert!(!mcp.to_string().contains("tok-123-secret"), "{mcp}");
+        let args = command_args(&mcp.to_string(), None, None);
+        assert!(!args.iter().any(|a| a.contains("tok-123-secret")));
     }
 
     #[test]
