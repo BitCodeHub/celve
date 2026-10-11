@@ -2,7 +2,7 @@
 
 > **Last updated:** 2026-10-11
 
-Sage is GridCraft's built-in assistant. It lives in a pane on the right of the window
+Sage is Celve's built-in assistant. It lives in a pane on the right of the window
 (**Home ▸ Sage**, the sparkle button in the title bar, or **⌘⇧I**) and can:
 
 - **Answer anything**: questions about the workbook, formulas, maths, writing, general knowledge, and
@@ -20,11 +20,11 @@ sheets or overwriting data you didn't mention, and doesn't save files unless ask
 ## How it works
 
 ```
-Sage pane (ui-egui/src/sage.rs) ──SageHost──► apps/gridcraft/src/sage.rs
+Sage pane (ui-egui/src/sage.rs) ──SageHost──► apps/celve/src/sage.rs
                                                 │  starts the assistant process (stream-JSON on stdio)
                                                 │  with one MCP server: this executable in bridge mode
                                                 ▼
-                                   gridcraft --mcp-bridge <port>   (crates/mcp, Remote backend)
+                                   celve --mcp-bridge <port>   (crates/mcp, Remote backend)
                                                 │  token-authenticated loopback control channel
                                                 ▼
                                    the window's control queue (same as --control)
@@ -32,7 +32,7 @@ Sage pane (ui-egui/src/sage.rs) ──SageHost──► apps/gridcraft/src/sage.
 
 - The pane only draws the conversation; a `SageHost` supplied by the platform shell does the work.
   The web build has no host and shows a note instead.
-- The assistant gets **only** GridCraft's MCP tools plus web search/fetch. It runs in its own working
+- The assistant gets **only** Celve's MCP tools plus web search/fetch. It runs in its own working
   folder (`<settings>/Sage`) with none of the user's assistant settings, hooks, plugins or other MCP
   servers (`--setting-sources ""`, `--strict-mcp-config`, `--tools WebSearch,WebFetch`).
 - Its tools reach the window through a **private control channel**: a second loopback listener on a
@@ -50,14 +50,14 @@ Sage pane (ui-egui/src/sage.rs) ──SageHost──► apps/gridcraft/src/sage.
 ## Setup
 
 Sage needs its assistant runtime installed and signed in on the computer (found on `PATH`, in
-`~/.local/bin`, `/opt/homebrew/bin` or `/usr/local/bin`, or wherever `GRIDCRAFT_SAGE_CLI` points).
+`~/.local/bin`, `/opt/homebrew/bin` or `/usr/local/bin`, or wherever `CELVE_SAGE_CLI` points).
 Without it, the pane explains that Sage isn't set up. Other settings:
 
 | Variable | Effect |
 |---|---|
-| `GRIDCRAFT_SAGE_CLI` | Path to the assistant executable |
-| `GRIDCRAFT_SAGE_MODEL` | Model override passed to it |
-| `GRIDCRAFT_NO_SAGE` | Turns Sage and its private channel off |
+| `CELVE_SAGE_CLI` | Path to the assistant executable |
+| `CELVE_SAGE_MODEL` | Model override passed to it |
+| `CELVE_NO_SAGE` | Turns Sage and its private channel off |
 
 ## Driving Sage programmatically
 

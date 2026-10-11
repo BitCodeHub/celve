@@ -2,7 +2,7 @@
 
 > **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-10 · **Change:** major (created from a source audit of the chart model, renderer and XLSX chart parts) · **Target:** Microsoft Excel (Microsoft 365), Excel for Mac 16.113.4
 
-Excel's chart types and chart elements against GridCraft. Part of
+Excel's chart types and chart elements against Celve. Part of
 [target-app-parity.md](target-app-parity.md). **Breadth ~50%, ready ~30%, 40–60 h** (estimated).
 
 Sources: `crates/model/src/features.rs` (`ChartKind`, `Chart`, `Series`), `crates/chart/src`
@@ -11,7 +11,7 @@ open PRs #158, #161, and issue #190.
 
 ## Chart types
 
-| Excel type | Excel subtypes | GridCraft | Notes |
+| Excel type | Excel subtypes | Celve | Notes |
 |---|---|---|---|
 | Column | clustered, stacked, 100% stacked, 3-D clustered/stacked/100%, 3-D column | 3 of 7 | no 3-D |
 | Bar | clustered, stacked, 100%, 3-D ×3 | 3 of 6 | no 3-D |
@@ -33,7 +33,7 @@ open PRs #158, #161, and issue #190.
 
 ## Chart elements and formatting
 
-| Element | Excel | GridCraft |
+| Element | Excel | Celve |
 |---|---|---|
 | Move and resize the chart object | yes | move yes; **resize broken** (#190) |
 | Chart title, axis titles | text, linked to cells, full formatting | text only |
@@ -60,7 +60,7 @@ open PRs #158, #161, and issue #190.
 
 Charts are read from and written to DrawingML chart parts, but only the fields the model holds
 survive: anything else (axis scaling, label options, trendlines, per-point formats, chartex
-extensions) is lost when GridCraft saves a workbook it opened. That is the main reason charts are
+extensions) is lost when Celve saves a workbook it opened. That is the main reason charts are
 **~30% ready**: a user who opens an Excel workbook with charts and saves it gets simpler charts
 back.
 

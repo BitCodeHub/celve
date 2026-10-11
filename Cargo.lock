@@ -579,6 +579,52 @@ dependencies = [
 ]
 
 [[package]]
+name = "celve"
+version = "0.5.0"
+dependencies = [
+ "arboard",
+ "eframe",
+ "egui",
+ "fmv-macos-events",
+ "gridcraft-engine",
+ "gridcraft-mcp",
+ "gridcraft-ui-egui",
+ "image",
+ "log",
+ "muda",
+ "rfd",
+ "serde_json",
+ "winresource",
+]
+
+[[package]]
+name = "celve-cli"
+version = "0.5.0"
+dependencies = [
+ "gridcraft-engine",
+ "gridcraft-mcp",
+ "log",
+ "serde_json",
+]
+
+[[package]]
+name = "celve-web"
+version = "0.5.0"
+dependencies = [
+ "eframe",
+ "egui",
+ "gridcraft-engine",
+ "gridcraft-ui-egui",
+ "js-sys",
+ "log",
+ "rfd",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
 name = "cfg-if"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1415,25 +1461,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gridcraft"
-version = "0.5.0"
-dependencies = [
- "arboard",
- "eframe",
- "egui",
- "fmv-macos-events",
- "gridcraft-engine",
- "gridcraft-mcp",
- "gridcraft-ui-egui",
- "image",
- "log",
- "muda",
- "rfd",
- "serde_json",
- "winresource",
-]
-
-[[package]]
 name = "gridcraft-calc"
 version = "0.5.0"
 dependencies = [
@@ -1454,16 +1481,6 @@ dependencies = [
  "gridcraft-model",
  "gridcraft-numfmt",
  "serde",
-]
-
-[[package]]
-name = "gridcraft-cli"
-version = "0.5.0"
-dependencies = [
- "gridcraft-engine",
- "gridcraft-mcp",
- "log",
- "serde_json",
 ]
 
 [[package]]
@@ -1558,23 +1575,6 @@ dependencies = [
  "serde_json",
  "sys-locale",
  "toml",
- "web-sys",
-]
-
-[[package]]
-name = "gridcraft-web"
-version = "0.5.0"
-dependencies = [
- "eframe",
- "egui",
- "gridcraft-engine",
- "gridcraft-ui-egui",
- "js-sys",
- "log",
- "rfd",
- "serde_json",
- "wasm-bindgen",
- "wasm-bindgen-futures",
  "web-sys",
 ]
 

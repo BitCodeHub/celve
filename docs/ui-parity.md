@@ -12,7 +12,7 @@ Sources: `crates/ui-egui/src` (ribbon, grid, editor, formula bar, dialogs, panes
 
 ## Window and chrome
 
-| Element | Excel | GridCraft | Status |
+| Element | Excel | Celve | Status |
 |---|---|---|---|
 | Title bar, Quick Access Toolbar, AutoSave toggle | yes | yes | done; macOS window controls misaligned (#170), Dock icon size (#169) |
 | Ribbon: tabs, groups, split buttons, galleries, contextual tabs | yes | yes (Table Design, Chart Design, Format, PivotTable tabs) | done; missing contextual tabs for pictures, shapes, sparklines, header/footer, slicers |
@@ -49,7 +49,7 @@ Sources: `crates/ui-egui/src` (ribbon, grid, editor, formula bar, dialogs, panes
 
 ## Keyboard
 
-| Area | Excel | GridCraft |
+| Area | Excel | Celve |
 |---|---|---|
 | Shortcuts bound to commands | 200+ documented shortcuts per platform | 59 command shortcuts plus grid and editor keys (55 distinct keys handled in `ui-egui`) |
 | Ctrl+arrow, Ctrl+Shift+arrow, Ctrl+Home/End, Page Up/Down, Alt+Page | yes | done |
@@ -78,7 +78,7 @@ theme or accessibility checker. Excel is strong here. 12–18 h.
 ## Feel
 
 Pixel comparison against Excel screenshots hasn't been run since M1; fonts depend on the system
-(no Calibri; Carlito would match metrics, #29, #4, #168 for weights); icons are GridCraft's own
+(no Calibri; Carlito would match metrics, #29, #4, #168 for weights); icons are Celve's own
 by rule and will never match Office's, by design.
 
 ## Work (50–80 h)

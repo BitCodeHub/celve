@@ -8,7 +8,7 @@ use gridcraft_model::{Sheet, Workbook};
 
 use crate::{EngineError, Result};
 
-/// File formats GridCraft reads or writes.
+/// File formats Celve reads or writes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FileKind {
     Xlsx,
@@ -46,7 +46,7 @@ pub fn open_bytes(name: &str, bytes: &[u8]) -> Result<(Workbook, Vec<String>)> {
     let sniffed = gridcraft_xlsx::sniff(bytes);
     if sniffed == gridcraft_xlsx::Format::Encrypted {
         return Err(EngineError::Other(format!(
-            "'{name}' is password-protected. GridCraft can't open encrypted workbooks yet; remove the password in Excel and try again."
+            "'{name}' is password-protected. Celve can't open encrypted workbooks yet; remove the password in Excel and try again."
         )));
     }
     if sniffed == gridcraft_xlsx::Format::LegacyBinary {
@@ -77,7 +77,7 @@ pub fn open_bytes(name: &str, bytes: &[u8]) -> Result<(Workbook, Vec<String>)> {
     }
     match kind {
         Some(FileKind::Json) => {
-            let mut wb: Workbook = serde_json::from_slice(bytes).map_err(|e| EngineError::Other(format!("not a GridCraft JSON workbook: {e}")))?;
+            let mut wb: Workbook = serde_json::from_slice(bytes).map_err(|e| EngineError::Other(format!("not a Celve JSON workbook: {e}")))?;
             wb.styles.rebuild_index();
             if wb.sheets.is_empty() {
                 wb = Workbook::new();

@@ -486,7 +486,7 @@ fn rich_fixture() -> Vec<u8> {
     body.extend(&arr);
     s.extend(rec(0x0221, &body));
     s.extend(formula(9, 1, 15, num(20.0), &exp(8, 1), &[]));
-    // C9: a token GridCraft doesn't read keeps its value.
+    // C9: a token Celve doesn't read keeps its value.
     s.extend(formula(8, 2, 15, num(99.0), &[0x18, 0x01, 0, 0], &[]));
     // D9 =SUM(A:A)
     s.extend(formula(8, 3, 15, num(123.0), &[ptg_area(0x25, 0, 0xFFFF, 0, 0), func_var(1, 4)].concat(), &[]));

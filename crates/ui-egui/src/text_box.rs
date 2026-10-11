@@ -18,7 +18,7 @@ pub struct EditState {
 }
 
 pub(crate) fn editor_id() -> egui::Id {
-    egui::Id::new("gridcraft.text_box_editor")
+    egui::Id::new("celve.text_box_editor")
 }
 
 impl SheetApp {

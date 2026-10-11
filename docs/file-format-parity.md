@@ -2,18 +2,18 @@
 
 > **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-10 · **Change:** minor (`.xls` import) · **Target:** Microsoft Excel (Microsoft 365), Excel for Mac 16.113.4
 
-Every format Excel opens or saves, with GridCraft's read and write support, fidelity and tests.
+Every format Excel opens or saves, with Celve's read and write support, fidelity and tests.
 Part of [target-app-parity.md](target-app-parity.md). **File formats: ~50% ready, 80–120 h**
 (estimated).
 
 Excel's list comes from Microsoft's public "File formats that are supported in Excel"
-documentation (the Office bundle is off limits under this repo's clean-room rule). GridCraft's
+documentation (the Office bundle is off limits under this repo's clean-room rule). Celve's
 support comes from `crates/engine/src/io.rs` (`FileKind`), `crates/xlsx/src` and the tests in
 `crates/xlsx/src/tests/` (round-trip, fixtures, malformed input, CSV, ODS, XLS, XLSB, PivotTables).
 
 ## Workbook formats
 
-| Format | Excel | GridCraft read | GridCraft write | Fidelity / notes | Tests |
+| Format | Excel | Celve read | Celve write | Fidelity / notes | Tests |
 |---|---|---|---|---|---|
 | `.xlsx` Excel Workbook (transitional) | R/W, native | yes | yes | Cells, shared/array/dynamic formulas, styles, themes, merges, CF, validation, tables, comments and notes, hyperlinks, names, freeze panes, outline, print settings, pictures, shapes, charts (simplified, see [chart-parity.md](chart-parity.md)), sparklines, PivotTables (caches and tables), protection, calc settings. **Not preserved:** unmodelled parts and extensions (form controls, slicer caches, timelines, external links, OLE objects, custom XML, data model, query tables, chart details). Never checked in Excel across a corpus: repair prompts unknown. 100 MB files fail (#175) | `roundtrip.rs`, `fixtures.rs`, `malformed.rs`, `pivot_tests.rs` |
 | `.xlsx` Strict Open XML | R/W | yes | no (writes transitional) | Excel also saves transitional by default | fixtures |
@@ -30,7 +30,7 @@ support comes from `crates/engine/src/io.rs` (`FileKind`), `crates/xlsx/src` and
 
 ## Text and data formats
 
-| Format | Excel | GridCraft read | GridCraft write | Notes |
+| Format | Excel | Celve read | Celve write | Notes |
 |---|---|---|---|---|
 | `.csv` UTF-8 / Windows / Mac / MS-DOS | R/W | yes (UTF-8 and UTF-16 BOMs, UTF-8, Windows-1252 fallback; delimiter detection) | yes (UTF-8 without BOM, CRLF) | Excel writes the **displayed** values; we write raw values. No encoding choice on save. Re-import of a single-column export splits text (#127) |
 | `.txt` tab-delimited, Unicode text | R/W | yes (`.txt`, `.tsv`, `.tab`) | yes | Text Import Wizard options partly via Text to Columns |
@@ -38,12 +38,12 @@ support comes from `crates/engine/src/io.rs` (`FileKind`), `crates/xlsx/src` and
 | `.dif`, `.slk` (SYLK) | R/W | no | no | Small, legacy |
 | `.htm` / `.html` web page | R/W (Windows) | yes, via Get Data ▸ From HTML | yes (one sheet as a table) | Formatting not exported |
 | `.mht` / `.mhtml` single-file web page | R/W (Windows) | no | no | |
-| `.json` | via Power Query | GridCraft's own workbook JSON (debug) and JSON import | GridCraft JSON | Not Power Query's JSON shaping; notes and hyperlinks break export (#126) |
+| `.json` | via Power Query | Celve's own workbook JSON (debug) and JSON import | Celve JSON | Not Power Query's JSON shaping; notes and hyperlinks break export (#126) |
 | `.xml` with XML maps | Developer ▸ Import/Export | no | no | |
 
 ## Export and print
 
-| Format | Excel | GridCraft | Notes |
+| Format | Excel | Celve | Notes |
 |---|---|---|---|
 | PDF | Save As / Export | yes (own PDF 1.7 writer) | Only the 14 standard PDF fonts, no embedding: **non-Latin text (CJK, Arabic, Devanagari, Thai) does not export**; web build exports without a file prompt (#141) |
 | XPS | Windows | no | Low priority |
@@ -54,7 +54,7 @@ support comes from `crates/engine/src/io.rs` (`FileKind`), `crates/xlsx/src` and
 
 Excel's Get Data reaches files (Excel, CSV, XML, JSON, PDF, Parquet, folders), databases (SQL
 Server, Access, ODBC, …), web pages, SharePoint and online services, through Power Query.
-GridCraft imports CSV/TSV, JSON and HTML tables only, with no query editor, no connections and no
+Celve imports CSV/TSV, JSON and HTML tables only, with no query editor, no connections and no
 refresh. Counted under features (Get & Transform, ~10% ready), not here.
 
 ## Work (80–120 h)

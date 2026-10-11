@@ -2,7 +2,7 @@
 
 > **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-10 · **Change:** major (created; measured against Microsoft's published Excel function list) · **Target:** Microsoft Excel (Microsoft 365), Excel for Mac 16.113.4
 
-Excel's worksheet functions, category by category, against GridCraft's function library. Part of
+Excel's worksheet functions, category by category, against Celve's function library. Part of
 [target-app-parity.md](target-app-parity.md); gaps feed [gaps.md](gaps.md).
 
 ## How this is measured

@@ -847,7 +847,7 @@ fn ods_import_keeps_cached_values_and_reports_limits() {
 fn ods_import_never_reuses_source_as_save_target() {
     #[allow(clippy::disallowed_methods)] // native-only test: a unique temp dir name
     let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
-    let dir = std::env::temp_dir().join(format!("gridcraft-ods-{}-{nonce}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("celve-ods-{}-{nonce}", std::process::id()));
     std::fs::create_dir(&dir).unwrap();
     let bytes = ods_fixture();
     for name in ["source.ods", "disguised.xlsx"] {
@@ -1217,7 +1217,7 @@ fn xlsb_import_keeps_cached_values_and_reports_limits() {
 fn xlsb_import_never_reuses_source_as_save_target() {
     #[allow(clippy::disallowed_methods)] // native-only test: a unique temp dir name
     let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
-    let dir = std::env::temp_dir().join(format!("gridcraft-xlsb-{}-{nonce}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("celve-xlsb-{}-{nonce}", std::process::id()));
     std::fs::create_dir(&dir).unwrap();
     let bytes = xlsb_fixture();
     for name in ["source.xlsb", "disguised.xlsx"] {

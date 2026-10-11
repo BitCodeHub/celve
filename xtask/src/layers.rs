@@ -24,7 +24,7 @@ impl Class {
 }
 
 /// The layering table (AGENTS.md "Layering", plan/architecture.md). Names are package names
-/// without the `gridcraft-` prefix.
+/// without the `gridcraft-` (internal crates) or `celve-` (apps) prefix.
 pub const TABLE: &[(&str, Class)] = &[
     ("core", Class::Layer(0)),
     ("numfmt", Class::Layer(0)),
@@ -39,7 +39,7 @@ pub const TABLE: &[(&str, Class)] = &[
     ("ui-egui", Class::Layer(6)),
     ("mcp", Class::Layer(6)),
     // L7 apps (exempt) and tooling (unchecked)
-    ("gridcraft", Class::Layer(7)),
+    ("celve", Class::Layer(7)),
     ("cli", Class::Layer(7)),
     ("web", Class::Layer(7)),
     ("xtask", Class::Exempt),
@@ -69,7 +69,7 @@ pub const UI_CRATES: &[&str] = &["egui*", "eframe", "winit", "rfd", "wgpu*"];
 pub const UI_MIN_LAYER: u8 = 6;
 
 pub fn short_name(pkg: &str) -> &str {
-    pkg.strip_prefix("gridcraft-").unwrap_or(pkg)
+    pkg.strip_prefix("gridcraft-").or_else(|| pkg.strip_prefix("celve-")).unwrap_or(pkg)
 }
 
 pub fn classify(pkg: &str) -> Option<Class> {
@@ -234,7 +234,7 @@ mod tests {
             c("gridcraft-chart", &[("gridcraft-model", Normal, true)]),
             c("gridcraft-engine", &[("gridcraft-calc", Normal, true), ("gridcraft-xlsx", Normal, true), ("gridcraft-chart", Normal, true)]),
             c("gridcraft-ui-egui", &[("gridcraft-engine", Normal, true), ("egui", Normal, false), ("wgpu", Normal, false)]),
-            c("gridcraft-cli", &[("gridcraft-ui-egui", Normal, true), ("gridcraft-mcp", Normal, true)]),
+            c("celve-cli", &[("gridcraft-ui-egui", Normal, true), ("gridcraft-mcp", Normal, true)]),
         ];
         assert!(check(&g).is_empty(), "{:?}", check(&g));
     }
@@ -294,14 +294,14 @@ mod tests {
 
     #[test]
     fn unregistered_crate_is_error() {
-        let v = check(&[c("gridcraft-mystery", &[])]);
-        assert!(matches!(&v[..], [Violation::Unregistered { krate }] if krate == "gridcraft-mystery"));
+        let v = check(&[c("celve-mystery", &[])]);
+        assert!(matches!(&v[..], [Violation::Unregistered { krate }] if krate == "celve-mystery"));
         assert!(v[0].to_string().contains("register"));
     }
 
     #[test]
     fn apps_and_xtask_exempt() {
-        for app in ["gridcraft", "gridcraft-cli", "gridcraft-web", "xtask"] {
+        for app in ["celve", "celve-cli", "celve-web", "xtask"] {
             assert!(check(&[c(app, &[("egui", Normal, false), ("gridcraft-ui-egui", Normal, true)])]).is_empty());
         }
     }

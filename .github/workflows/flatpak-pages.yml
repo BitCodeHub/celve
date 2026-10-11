@@ -31,7 +31,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
-      APP_ID: ai.storyteller.gridcraft
+      APP_ID: cloud.agentlumi.celve
     steps:
       - name: Configure Pages
         id: pages
@@ -70,7 +70,7 @@ jobs:
           gh release download "$tag" --repo "$GITHUB_REPOSITORY" \
             --pattern SHA256SUMS.txt --dir bundles
           for arch in x86_64 aarch64; do
-            asset="gridcraft-$version-linux-$arch.flatpak"
+            asset="celve-$version-linux-$arch.flatpak"
             gh release download "$tag" --repo "$GITHUB_REPOSITORY" \
               --pattern "$asset" --dir bundles
             test -s "bundles/$asset"
@@ -83,7 +83,7 @@ jobs:
           test "$(find bundles -maxdepth 1 -type f -name '*.flatpak' | wc -l)" -eq 2
 
           for arch in x86_64 aarch64; do
-            asset="bundles/gridcraft-$version-linux-$arch.flatpak"
+            asset="bundles/celve-$version-linux-$arch.flatpak"
             validation_repo="$(mktemp -d)"
             ostree --repo="$validation_repo" init --mode=archive-z2
             flatpak build-import-bundle "$validation_repo" "$asset"
@@ -117,15 +117,15 @@ jobs:
           version="${RELEASE_TAG#v}"
           for arch in x86_64 aarch64; do
             flatpak build-import-bundle "$repo_dir" \
-              "bundles/gridcraft-$version-linux-$arch.flatpak"
+              "bundles/celve-$version-linux-$arch.flatpak"
           done
           # Prune unreachable objects and keep at most 3 commits per ref, so the Pages repository
           # (re-mirrored and re-deployed on every release) does not grow without bound.
           flatpak build-update-repo \
             --prune --prune-depth=3 \
-            --title="GridCraft" \
-            --comment='Official GridCraft releases' \
-            --description='Official Flatpak repository for GridCraft' \
+            --title="Celve" \
+            --comment='Official Celve releases' \
+            --description='Official Flatpak repository for Celve' \
             --homepage="https://github.com/$GITHUB_REPOSITORY" \
             --default-branch=stable \
             "$repo_dir"
@@ -137,20 +137,20 @@ jobs:
 
           base_url="${PAGES_BASE_URL%/}"
           repo_url="$base_url/flatpak/repo/"
-          cat >"$site/flatpak/gridcraft.flatpakrepo" <<META
+          cat >"$site/flatpak/celve.flatpakrepo" <<META
           [Flatpak Repo]
-          Title=GridCraft
-          Comment=Official GridCraft releases
-          Description=Official Flatpak repository for GridCraft
+          Title=Celve
+          Comment=Official Celve releases
+          Description=Official Flatpak repository for Celve
           Url=$repo_url
           Homepage=https://github.com/$GITHUB_REPOSITORY
           META
           cat >"$site/flatpak/index.html" <<HTML
-          <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>GridCraft Flatpak repository</title></head><body><main><h1>GridCraft Flatpak repository</h1><p>Latest published release: <strong>$RELEASE_TAG</strong></p><p><a href="gridcraft.flatpakrepo">Add the GridCraft repository</a></p><pre>flatpak remote-add --if-not-exists gridcraft $base_url/flatpak/gridcraft.flatpakrepo
-          flatpak install gridcraft $APP_ID</pre></main></body></html>
+          <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Celve Flatpak repository</title></head><body><main><h1>Celve Flatpak repository</h1><p>Latest published release: <strong>$RELEASE_TAG</strong></p><p><a href="celve.flatpakrepo">Add the Celve repository</a></p><pre>flatpak remote-add --if-not-exists celve $base_url/flatpak/celve.flatpakrepo
+          flatpak install celve $APP_ID</pre></main></body></html>
           HTML
           cat >"$site/index.html" <<HTML
-          <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>GridCraft downloads</title></head><body><main><h1>GridCraft downloads</h1><p><a href="flatpak/">Flatpak repository</a></p><p><a href="https://github.com/$GITHUB_REPOSITORY/releases/tag/$RELEASE_TAG">Release assets</a></p></main></body></html>
+          <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Celve downloads</title></head><body><main><h1>Celve downloads</h1><p><a href="flatpak/">Flatpak repository</a></p><p><a href="https://github.com/$GITHUB_REPOSITORY/releases/tag/$RELEASE_TAG">Release assets</a></p></main></body></html>
           HTML
           touch "$site/.nojekyll"
 

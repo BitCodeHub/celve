@@ -121,7 +121,7 @@ pub fn tool_definitions() -> Vec<Value> {
         tool(
             "execute_command",
             "Execute command",
-            "Run ANY GridCraft command by id with JSON params — every ribbon/menu action is a command. Find ids and parameter \
+            "Run ANY Celve command by id with JSON params — every ribbon/menu action is a command. Find ids and parameter \
              docs with list_commands. Examples: {\"command\":\"cell.set\",\"params\":{\"cell\":\"B2\",\"input\":\"=SUM(A1:A9)\"}}; \
              {\"command\":\"home.bold\",\"params\":{\"range\":\"A1:C1\"}}; {\"command\":\"sheet.insert\"}; \
              {\"command\":\"data.removeDuplicates\",\"params\":{\"range\":\"A1:C20\"}}. Most commands act on the current selection \
@@ -135,7 +135,7 @@ pub fn tool_definitions() -> Vec<Value> {
         tool(
             "list_commands",
             "List commands",
-            "List GridCraft commands: id, label, ribbon path, shortcut, a parameter description (`params`) and whether it can run \
+            "List Celve commands: id, label, ribbon path, shortcut, a parameter description (`params`) and whether it can run \
              right now. Use it to discover what execute_command can do (e.g. search \"sort\", \"border\", \"chart\", \"sheet\").",
             obj(json!({"search": string("Case-insensitive substring matched against id, label and ribbon path")}), &[]),
             true,
@@ -366,7 +366,7 @@ pub fn tool_definitions() -> Vec<Value> {
         tool(
             "screenshot",
             "Screenshot",
-            "Look at the GridCraft window. Without `path` the screenshot comes back as an image you can see (scaled to at most `maxSize` pixels on its long side, default 1568); with `path` it is saved there as a PNG instead. Desktop app only (`gridcraft-cli mcp --connect 7979`).",
+            "Look at the Celve window. Without `path` the screenshot comes back as an image you can see (scaled to at most `maxSize` pixels on its long side, default 1568); with `path` it is saved there as a PNG instead. Desktop app only (`celve-cli mcp --connect 7979`).",
             obj(
                 json!({"path": string("Output PNG path (omit to receive the image)"), "maxSize": int("Longest side in pixels when returning the image (default 1568)")}),
                 &[],
@@ -585,7 +585,7 @@ fn image_result(name: &str, v: &Value) -> Option<ToolResult> {
     }
     let data = v.get("base64").and_then(Value::as_str)?;
     let (w, h) = (v.get("width").and_then(Value::as_u64).unwrap_or(0), v.get("height").and_then(Value::as_u64).unwrap_or(0));
-    Some(ToolResult::image(format!("Screenshot of the GridCraft window ({w}×{h})."), "image/png", data))
+    Some(ToolResult::image(format!("Screenshot of the Celve window ({w}×{h})."), "image/png", data))
 }
 
 fn dispatch(b: &mut dyn Backend, name: &str, a: &Args) -> Result<Value, String> {

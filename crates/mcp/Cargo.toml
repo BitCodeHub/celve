@@ -3,7 +3,7 @@ name = "gridcraft-mcp"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "GridCraft MCP server: JSON-RPC 2.0 over stdio, driving a running app or a headless session"
+description = "Celve MCP server: JSON-RPC 2.0 over stdio, driving a running app or a headless session"
 
 [lints]
 workspace = true

@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=Celve
+GenericName=Spreadsheet
+Comment=Calculate, analyse and chart data in workbooks
+Exec=celve %F
+TryExec=celve
+Icon=cloud.agentlumi.celve
+Terminal=false
+StartupNotify=true
+StartupWMClass=cloud.agentlumi.celve
+Categories=Office;Spreadsheet;
+MimeType=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;application/vnd.ms-excel.sheet.macroEnabled.12;application/vnd.ms-excel;text/csv;text/tab-separated-values;
+Keywords=spreadsheet;workbook;sheet;table;formula;chart;pivot;xlsx;xls;csv;tsv;excel;

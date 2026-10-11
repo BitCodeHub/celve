@@ -365,7 +365,7 @@ struct Globals {
 pub fn read_xls(bytes: &[u8]) -> Result<(Workbook, ReadReport), IoError> {
     let cfb = Compound::open(bytes).map_err(invalid)?;
     if cfb.stream("Workbook").map_err(invalid)?.is_none() && cfb.has_stream("Book") {
-        return Err(invalid("this is an Excel 5.0/95 workbook (BIFF5). GridCraft opens Excel 97-2003 and newer files; resave it in a newer Excel"));
+        return Err(invalid("this is an Excel 5.0/95 workbook (BIFF5). Celve opens Excel 97-2003 and newer files; resave it in a newer Excel"));
     }
     let stream = cfb.stream("Workbook").map_err(invalid)?.ok_or_else(|| invalid("no Workbook stream: this is not an Excel workbook"))?;
     let recs = records(&stream)?;
@@ -403,7 +403,7 @@ pub fn read_xls(bytes: &[u8]) -> Result<(Workbook, ReadReport), IoError> {
         sheet.visibility = info.visibility;
         if wb.check_sheet_name(&sheet.name, None).is_err() {
             let fresh = wb.next_sheet_name();
-            report.warn(format!("Sheet '{}' had a name GridCraft can't use; it was renamed '{fresh}'.", sheet.name));
+            report.warn(format!("Sheet '{}' had a name Celve can't use; it was renamed '{fresh}'.", sheet.name));
             sheet.name = fresh;
         }
         sheet_map.push(Some(wb.sheets.len()));
@@ -432,7 +432,7 @@ fn globals(recs: &[Record<'_>], budget: &mut Budget, report: &mut ReadReport) ->
     let vers = u16_at(first.data, 0).unwrap_or(0);
     let dt = u16_at(first.data, 2).unwrap_or(0);
     if vers != 0x0600 {
-        return Err(invalid("this is an Excel 5.0/95 or older workbook. GridCraft opens Excel 97-2003 and newer files; resave it in a newer Excel"));
+        return Err(invalid("this is an Excel 5.0/95 or older workbook. Celve opens Excel 97-2003 and newer files; resave it in a newer Excel"));
     }
     if dt != 0x0005 {
         return Err(invalid("the workbook stream doesn't start with workbook globals"));
@@ -442,7 +442,7 @@ fn globals(recs: &[Record<'_>], budget: &mut Budget, report: &mut ReadReport) ->
             rt::EOF => break,
             rt::FILEPASS => {
                 return Err(invalid(
-                    "this .xls workbook is password-protected. GridCraft can't open encrypted workbooks yet; remove the password in Excel and try again",
+                    "this .xls workbook is password-protected. Celve can't open encrypted workbooks yet; remove the password in Excel and try again",
                 ));
             }
             rt::DATEMODE => g.date_1904 = u16_at(r.data, 0) == Some(1),
@@ -823,7 +823,7 @@ impl FormulaStats {
     fn report(&self, report: &mut ReadReport) {
         if self.dropped > 0 {
             report.warn(format!(
-                "{} formula{} in this .xls file use features GridCraft can't read ({}); their saved results were kept as values.",
+                "{} formula{} in this .xls file use features Celve can't read ({}); their saved results were kept as values.",
                 self.dropped,
                 if self.dropped == 1 { "" } else { "s" },
                 self.reasons.join("; ")
@@ -1242,7 +1242,7 @@ fn attach(sheet: &mut Sheet, pos: CellRef, rgce: &[u8], rgcb: &[u8], array: Opti
         Ok(text) => {
             let mut f = Formula::new(&text);
             if f.expr.is_none() {
-                formulas.drop("formula text GridCraft can't parse".into());
+                formulas.drop("formula text Celve can't parse".into());
                 return;
             }
             f.array = array.filter(|r| !r.is_single());

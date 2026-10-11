@@ -3,7 +3,7 @@ name = "gridcraft-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "GridCraft core types: cell addresses, values, errors, date serials"
+description = "Celve core types: cell addresses, values, errors, date serials"
 
 [lints]
 workspace = true

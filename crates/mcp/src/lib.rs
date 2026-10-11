@@ -1,11 +1,11 @@
-//! GridCraft's MCP server.
+//! Celve's MCP server.
 //!
 //! [Model Context Protocol](https://modelcontextprotocol.io) over stdio: newline-delimited
-//! JSON-RPC 2.0, hand-written (no async runtime). The server exposes GridCraft as MCP tools and
+//! JSON-RPC 2.0, hand-written (no async runtime). The server exposes Celve as MCP tools and
 //! resources and forwards everything to a [`Backend`]:
 //!
 //! - [`Remote`] talks to a running desktop app through its loopback JSON-lines control channel
-//!   (`gridcraft --control 7979`): one `{"id","method","params"}` line in, one
+//!   (`celve --control 7979`): one `{"id","method","params"}` line in, one
 //!   `{"id","ok","result"|"error"}` line out (see `docs/control-protocol.md`).
 //! - [`Headless`] hosts an in-process [`gridcraft_engine::Session`] and implements the
 //!   engine-level control-channel methods itself, so agents can build workbooks without a window.

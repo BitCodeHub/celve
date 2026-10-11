@@ -1,0 +1,49 @@
+# Flatpak manifest for the single-file bundle attached to every GitHub release
+# (celve-<version>-linux-<arch>.flatpak). Build it with packaging/linux/flatpak-bundle.sh.
+#
+# It repackages the release's own Linux tarball (celve-<version>-linux-<arch>.tar.gz,
+# built on Ubuntu 22.04 by package.sh) instead of compiling Rust inside flatpak-builder: no
+# network and no vendored crate sources during the build, a few seconds instead of 20+ minutes,
+# and byte-for-byte the same binaries as the AppImage/deb/rpm. The script unpacks the tarball
+# into `stage/` next to a copy of this file. The binaries need glibc >= 2.35 and load X11,
+# Wayland, xkbcommon and Vulkan/GL at runtime; the freedesktop runtime has all of them, and the
+# GPU driver comes from its org.freedesktop.Platform.GL extension.
+#
+# cloud.agentlumi.celve.yml (same directory) is the from-source manifest for Flathub. Keep
+# runtime, runtime-version, sdk and finish-args identical in both (packaging-lint checks this).
+id: cloud.agentlumi.celve
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+command: celve
+finish-args:
+  # Display: Wayland first; X11 only when no Wayland compositor is running.
+  - --socket=wayland
+  - --socket=fallback-x11
+  # X11 shared memory (MIT-SHM). Without it the X11 fallback is slow or fails.
+  - --share=ipc
+  # GPU access for rendering.
+  - --device=dri
+  # Open/Save dialogs use the file-chooser portal (rfd), and drag-and-drop uses the document
+  # portal, so broad filesystem access isn't needed. Documents and Downloads are granted for
+  # opening workbooks by path from the command line.
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-download
+  # Deliberately not granted: network (the optional --control channel listens on 127.0.0.1 in
+  # the sandbox; `flatpak override --user --share=network cloud.agentlumi.celve` exposes it to
+  # host agents) and home/host filesystem access.
+modules:
+  - name: celve
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 bin/celve /app/bin/celve
+      # Headless CLI and MCP server: `flatpak run --command=celve-cli cloud.agentlumi.celve`.
+      - install -Dm755 bin/celve-cli /app/bin/celve-cli
+      - install -Dm644 share/applications/cloud.agentlumi.celve.desktop /app/share/applications/cloud.agentlumi.celve.desktop
+      - install -Dm644 share/mime/packages/cloud.agentlumi.celve.xml /app/share/mime/packages/cloud.agentlumi.celve.xml
+      # Already has the release's version and date substituted by package.sh.
+      - install -Dm644 share/metainfo/cloud.agentlumi.celve.metainfo.xml /app/share/metainfo/cloud.agentlumi.celve.metainfo.xml
+      - mkdir -p /app/share/icons /app/share/doc && cp -R share/icons/hicolor /app/share/icons/ && cp -R share/doc/celve /app/share/doc/
+    sources:
+      - type: dir
+        path: stage

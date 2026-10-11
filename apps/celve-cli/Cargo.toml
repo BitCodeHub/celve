@@ -1,0 +1,20 @@
+[package]
+name = "celve-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Celve command line: inspect, convert, evaluate, script and serve MCP without a window"
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "celve-cli"
+path = "src/main.rs"
+
+[dependencies]
+gridcraft-engine = { workspace = true }
+gridcraft-mcp = { workspace = true }
+serde_json = { workspace = true }
+log = { workspace = true }

@@ -3,7 +3,7 @@ name = "gridcraft-model"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "GridCraft document model: workbooks, sheets, cells, styles, tables, charts"
+description = "Celve document model: workbooks, sheets, cells, styles, tables, charts"
 
 [lints]
 workspace = true

@@ -3,7 +3,7 @@ name = "gridcraft-formula"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "GridCraft formula language: lexer, parser, printer and reference adjustment"
+description = "Celve formula language: lexer, parser, printer and reference adjustment"
 
 [lints]
 workspace = true

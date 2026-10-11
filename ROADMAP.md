@@ -1,10 +1,10 @@
-# GridCraft roadmap
+# Celve roadmap
 
 **Stage: alpha** · next: beta, ~25 points of "ready for real work" and ~160–240 h away
 
 > **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-10 · **Change:** major (full re-measure against Excel for Mac 16.113.4; restructured to the craftrules progress-docs standard) · **Target:** Microsoft Excel (Microsoft 365)
 
-GridCraft aims at full Microsoft Excel parity, and at being better in places: faster, open (XLSX
+Celve aims at full Microsoft Excel parity, and at being better in places: faster, open (XLSX
 is the native format), fully scriptable by agents (MCP, control channel, CLI), and on the web.
 This page is the summary. The detail is in:
 

@@ -1673,7 +1673,7 @@ mod tests {
     fn export_writes_file() {
         let mut s = s();
         s.execute("cell.set", json!({"cell": "B2", "input": "hello"})).unwrap();
-        let dir = std::env::temp_dir().join(format!("gridcraft-print-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("celve-print-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("out.pdf");
         let r = s.execute("file.exportPdf", json!({"path": path.to_str().unwrap()})).unwrap();

@@ -5,7 +5,7 @@
 # from a branch builds the tarball too; they need no secrets.
 #
 # With `package: true` (release.yml calls it that way, or a manual run) it instead builds the
-# release binaries and uploads `gridcraft-<version>-freebsd-x86_64.tar.gz` as the
+# release binaries and uploads `celve-<version>-freebsd-x86_64.tar.gz` as the
 # `release-freebsd` artifact (packaging/freebsd/package.sh), which release.yml attaches to the
 # draft GitHub Release.
 name: FreeBSD
@@ -46,10 +46,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 300
     env:
-      GRIDCRAFT_VERSION: ${{ inputs.version }}
-      GRIDCRAFT_VERSION_OVERRIDE: ${{ inputs.version_override && '1' || '' }}
-      GRIDCRAFT_PACKAGE: ${{ inputs.package && '1' || '' }}
-      GRIDCRAFT_BUILD_SHA: ${{ github.sha }}
+      CELVE_VERSION: ${{ inputs.version }}
+      CELVE_VERSION_OVERRIDE: ${{ inputs.version_override && '1' || '' }}
+      CELVE_PACKAGE: ${{ inputs.package && '1' || '' }}
+      CELVE_BUILD_SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check out craft-fonts
@@ -65,7 +65,7 @@ jobs:
           usesh: true
           cpu: 4
           mem: 12288
-          envs: "GRIDCRAFT_VERSION GRIDCRAFT_VERSION_OVERRIDE GRIDCRAFT_PACKAGE GRIDCRAFT_BUILD_SHA"
+          envs: "CELVE_VERSION CELVE_VERSION_OVERRIDE CELVE_PACKAGE CELVE_BUILD_SHA"
           # Only the packaging run brings files back (dist/release). The target dir lives outside
           # the synced checkout, because copying it out of the VM fails on large builds.
           copyback: ${{ inputs.package }}
@@ -76,11 +76,11 @@ jobs:
             . "$HOME/.cargo/env"
             # The checkout is synced in under another owner; let tests that call git read it.
             git config --global --add safe.directory "*"
-            export CARGO_TARGET_DIR=/var/tmp/gridcraft-target CARGO_PROFILE_DEV_DEBUG=0
+            export CARGO_TARGET_DIR=/var/tmp/celve-target CARGO_PROFILE_DEV_DEBUG=0
             rustc --version
-            if [ -n "$GRIDCRAFT_PACKAGE" ]; then
-              if [ -n "$GRIDCRAFT_VERSION_OVERRIDE" ]; then
-                cargo run -q -p xtask --no-default-features -- version set "$GRIDCRAFT_VERSION"
+            if [ -n "$CELVE_PACKAGE" ]; then
+              if [ -n "$CELVE_VERSION_OVERRIDE" ]; then
+                cargo run -q -p xtask --no-default-features -- version set "$CELVE_VERSION"
               fi
               CRAFT_FONTS_DIR="$PWD/craft-fonts" CRAFT_FONTS_REQUIRED=1 bash packaging/freebsd/package.sh
             else

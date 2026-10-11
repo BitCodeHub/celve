@@ -1,9 +1,9 @@
-# GridCraft control protocol
+# Celve control protocol
 
 Start the desktop app with a control port:
 
 ```sh
-gridcraft --control 7979            # or GRIDCRAFT_CONTROL_PORT=7979
+celve --control 7979            # or CELVE_CONTROL_PORT=7979
 ```
 
 Then send newline-delimited JSON to `127.0.0.1:7979`. Every request line gets one reply line:
@@ -19,7 +19,7 @@ Errors come back as `{"id": …, "ok": false, "error": "…"}`.
 
 | Method | Params | What it does |
 |---|---|---|
-| `engine.execute` | `{command, params}` | Runs any engine command (see `engine.commands` or `gridcraft-cli commands`) |
+| `engine.execute` | `{command, params}` | Runs any engine command (see `engine.commands` or `celve-cli commands`) |
 | `engine.commands` | `{search?}` | Every command: id, label, ribbon path, shortcut, params doc, enabled; `search` keeps those whose id, label or ribbon path contains it (case-insensitive) |
 | `engine.journal` | | Commands run so far (replayable) |
 | `document.inspect` | | Workbook summary: sheets, used ranges, tables, charts, names, selection, undo labels |
@@ -51,7 +51,7 @@ conversation so far: `{open, busy, messages: [{role, text, steps}]}`). See [`sag
 Besides `--control`, the desktop app opens a second control channel on a free loopback port for
 Sage's tools. It requires `{"method": "auth", "params": {"token": "…"}}` as the first line of every
 connection (the token is random per launch and only handed to Sage's own tool process); anything
-else gets `unauthorized` and the connection closes. `GRIDCRAFT_NO_SAGE=1` turns it (and Sage) off.
+else gets `unauthorized` and the connection closes. `CELVE_NO_SAGE=1` turns it (and Sage) off.
 
 Use `engine.execute` with `{command: "view.theme", params: {mode: "system"}}`
 to choose the display theme; `mode` accepts `"system"`, `"light"`, or `"dark"`.
@@ -65,5 +65,5 @@ The saved choice remains System; new users still start in Light. The legacy
 document text. The choice is saved in `ui.json`; with nothing saved the desktop app follows the
 system language.
 
-For a headless equivalent (no window), use `gridcraft-cli mcp` or `gridcraft-cli run`;
+For a headless equivalent (no window), use `celve-cli mcp` or `celve-cli run`;
 see [`mcp.md`](mcp.md) and [`cli.md`](cli.md).

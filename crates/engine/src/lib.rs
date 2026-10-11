@@ -1,4 +1,4 @@
-//! The GridCraft engine façade.
+//! The Celve engine façade.
 //!
 //! Every user-visible action is a command with a stable id (`cell.set`, `home.bold`,
 //! `data.sortAscending`…) and JSON parameters. The egui UI, the CLI, the control channel and MCP
@@ -157,7 +157,7 @@ impl Default for Prefs {
         Prefs {
             enter_direction: "down".into(),
             autocomplete: true,
-            user_name: "GridCraft User".into(),
+            user_name: "Celve User".into(),
             default_font: gridcraft_model::DEFAULT_FONT.into(),
             default_font_size: gridcraft_model::DEFAULT_FONT_SIZE,
             sheets_in_new_workbook: 1,

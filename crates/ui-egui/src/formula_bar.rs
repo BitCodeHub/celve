@@ -38,7 +38,7 @@ pub fn show(app: &mut SheetApp, ui: &mut egui::Ui) {
                 ui.painter().rect_filled(field, 4.0, t.input_bg);
                 ui.painter().rect_stroke(field, 4.0, Stroke::new(1.0, t.input_border), StrokeKind::Inside);
                 let mut child = ui.new_child(egui::UiBuilder::new().max_rect(field.shrink2(vec2(6.0, 3.0))));
-                let id = egui::Id::new("gridcraft.formula_bar");
+                let id = egui::Id::new("celve.formula_bar");
                 let editing_here = app.editor.as_ref().is_some_and(|e| e.from_formula_bar);
                 if app.editor.is_some() {
                     editor_widget(app, &mut child, id, theme::ui_font(13.0), expanded, field.width() - 12.0);
@@ -96,7 +96,7 @@ fn active_input(app: &SheetApp) -> String {
 }
 
 fn name_box(app: &mut SheetApp, ui: &mut egui::Ui, t: &Tokens) {
-    let id = egui::Id::new("gridcraft.name_box");
+    let id = egui::Id::new("celve.name_box");
     let shown = app.name_box_text();
     let mut text = app.name_box.clone().unwrap_or(shown.clone());
     let rect = Rect::from_min_size(ui.cursor().min, vec2(118.0, 24.0));
@@ -123,7 +123,7 @@ fn name_box(app: &mut SheetApp, ui: &mut egui::Ui, t: &Tokens) {
                     app.run("formulas.defineName", json!({"name": target}))
                 };
                 if let Err(e) = r {
-                    app.message = Some(("GridCraft".into(), crate::clean_error(&e)));
+                    app.message = Some(("Celve".into(), crate::clean_error(&e)));
                 }
                 app.grid.ensure_visible = true;
             }
@@ -153,7 +153,7 @@ fn name_box(app: &mut SheetApp, ui: &mut egui::Ui, t: &Tokens) {
 /// The text editor used in the cell and in the formula bar (they share `app.editor`).
 pub fn editor_widget(app: &mut SheetApp, ui: &mut egui::Ui, id: egui::Id, font: FontId, multiline: bool, width: f32) {
     let Some(mut ed) = app.editor.take() else { return };
-    let mine = ed.from_formula_bar == (id == egui::Id::new("gridcraft.formula_bar"));
+    let mine = ed.from_formula_bar == (id == egui::Id::new("celve.formula_bar"));
     // Keys the editor handles itself (before the TextEdit sees them), only where it has focus.
     let focused = ui.ctx().memory(|m| m.focused());
     let has_focus = focused == Some(id) || (mine && (ed.request_focus || focused.is_none()));
@@ -246,7 +246,7 @@ pub fn editor_widget(app: &mut SheetApp, ui: &mut egui::Ui, id: egui::Id, font: 
     // The text widget.
     let refs = formula_refs(&ed.text);
     let text_color = Tokens::get(ui.ctx()).text;
-    let cell_text_color = if id == egui::Id::new("gridcraft.cell_editor") { Color32::BLACK } else { text_color };
+    let cell_text_color = if id == egui::Id::new("celve.cell_editor") { Color32::BLACK } else { text_color };
     let font2 = font.clone();
     let mut layouter = move |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap_width: f32| {
         let s = buf.as_str();
@@ -289,7 +289,7 @@ pub fn editor_widget(app: &mut SheetApp, ui: &mut egui::Ui, id: egui::Id, font: 
         output.state.store(ui.ctx(), id);
     } else if resp.clicked() || resp.gained_focus() {
         // Clicking into the other editor moves editing there.
-        ed.from_formula_bar = id == egui::Id::new("gridcraft.formula_bar");
+        ed.from_formula_bar = id == egui::Id::new("celve.formula_bar");
         ed.enter_mode = false;
         app.session.mode = gridcraft_engine::Mode::Edit;
     }

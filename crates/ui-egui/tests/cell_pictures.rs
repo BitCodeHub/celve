@@ -64,7 +64,7 @@ fn image_meshes(h: &egui_kittest::Harness<'static, SheetApp>) -> Vec<(Rect, Rect
 #[test]
 fn picture_file_pickers_preserve_placement_and_isolate_canceled_results() {
     let bytes = png();
-    let path = std::env::temp_dir().join(format!("gridcraft-cell-picture-ui-{}.png", std::process::id()));
+    let path = std::env::temp_dir().join(format!("celve-cell-picture-ui-{}.png", std::process::id()));
     std::fs::write(&path, &bytes).unwrap();
     let chosen = path.to_string_lossy().to_string();
     let mut h = harness(Services { pick_picture: Some(Box::new(move || Some(chosen.clone()))), ..Default::default() });

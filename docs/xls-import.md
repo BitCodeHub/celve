@@ -1,7 +1,7 @@
 # Importing Excel 97-2003 workbooks
 
-Open an `.xls` file with File → Open, drag it onto GridCraft, or pass it to the CLI or the MCP
-`open_workbook` tool. GridCraft reads the workbook into a new document and lists anything it
+Open an `.xls` file with File → Open, drag it onto Celve, or pass it to the CLI or the MCP
+`open_workbook` tool. Celve reads the workbook into a new document and lists anything it
 skipped.
 
 The import is implemented from Microsoft's public [MS-XLS] (BIFF8) and [MS-CFB] (compound file)
@@ -23,16 +23,16 @@ specifications. It reads:
 Not imported, each reported once in the open warnings: charts and chart sheets, pictures and
 drawings, notes, hyperlinks, conditional formats, data validation, AutoFilters, print areas and
 titles, what-if data tables (their values are kept), Excel 4.0 macro sheets and VBA. A formula
-that uses something GridCraft can't read (links to other workbooks, macro commands) keeps its
+that uses something Celve can't read (links to other workbooks, macro commands) keeps its
 saved result as a plain value, and the warning counts them.
 
 Password-protected `.xls` files and Excel 5.0/95 (BIFF5) workbooks are refused with a message.
-GridCraft does not write `.xls`: Save opens Save As and suggests a new `.xlsx` file, and requests
+Celve does not write `.xls`: Save opens Save As and suggests a new `.xlsx` file, and requests
 to save to `.xls` return an error.
 
 ```sh
-gridcraft-cli info legacy.xls
-gridcraft-cli convert legacy.xls legacy.xlsx
+celve-cli info legacy.xls
+celve-cli convert legacy.xls legacy.xlsx
 ```
 
 CLI import warnings go to stderr, leaving structured output on stdout available for scripts.

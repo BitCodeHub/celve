@@ -1423,7 +1423,7 @@ fn interact(app: &mut SheetApp, ui: &mut egui::Ui, resp: &egui::Response, geo: &
                 if t != src {
                     let mode = if mods.command { "copy" } else { "series" };
                     if let Err(e) = app.run("edit.autoFill", json!({"source": src.a1(), "target": t.a1(), "mode": mode})) {
-                        app.message = Some(("GridCraft".into(), crate::clean_error(&e)));
+                        app.message = Some(("Celve".into(), crate::clean_error(&e)));
                     }
                 }
             }
@@ -1630,7 +1630,7 @@ fn select_ranges(app: &mut SheetApp, r: RangeRef, add: bool, active: CellRef) {
 /// Grid keyboard handling when no text field has focus.
 fn keyboard(app: &mut SheetApp, ctx: &egui::Context, resp: &egui::Response, geo: &Geo, sh: &Sheet) {
     // Focus left on an editor that no longer exists goes back to the grid.
-    let stale = [egui::Id::new("gridcraft.cell_editor"), egui::Id::new("gridcraft.formula_bar"), crate::text_box::editor_id()];
+    let stale = [egui::Id::new("celve.cell_editor"), egui::Id::new("celve.formula_bar"), crate::text_box::editor_id()];
     let editing = app.editor.is_some() || app.text_box_editor.is_some();
     if !editing && ctx.memory(|m| m.focused()).is_some_and(|f| stale.contains(&f)) {
         resp.request_focus();
@@ -1758,7 +1758,7 @@ fn in_cell_editor(app: &mut SheetApp, ui: &mut egui::Ui, geo: &Geo, sh: &Sheet, 
     };
     ui.painter().rect_filled(erect, 0.0, fill);
     ui.painter().rect_stroke(erect.expand(1.0), 0.0, Stroke::new(2.0, Tokens::get(ui.ctx()).sel_border), StrokeKind::Middle);
-    let id = egui::Id::new("gridcraft.cell_editor");
+    let id = egui::Id::new("celve.cell_editor");
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(erect.shrink2(vec2(2.0, 1.0))));
     crate::formula_bar::editor_widget(app, &mut child, id, font, false, erect.width() - 4.0);
 }

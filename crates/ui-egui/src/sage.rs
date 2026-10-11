@@ -337,8 +337,7 @@ pub fn show(app: &mut SheetApp, ui: &mut Ui) {
         .show(ui, |ui| {
             header(app, ui, &t);
             ui.separator();
-            let available =
-                app.services.sage.as_ref().map(|h| h.availability()).unwrap_or_else(|| Err("Sage runs in the GridCraft desktop app.".into()));
+            let available = app.services.sage.as_ref().map(|h| h.availability()).unwrap_or_else(|| Err("Sage runs in the Celve desktop app.".into()));
             let composer_h = if available.is_ok() { 118.0 + if app.sage.attachments.is_empty() { 0.0 } else { 26.0 } } else { 0.0 };
             let list_h = (ui.available_height() - composer_h).max(80.0);
             egui::ScrollArea::vertical().max_height(list_h).auto_shrink([false, false]).stick_to_bottom(true).show(ui, |ui| {
@@ -528,7 +527,23 @@ fn short(s: &str, n: usize) -> String {
 fn markdown(ui: &mut Ui, text: &str, t: &Tokens) {
     let mut in_code = false;
     let mut code = String::new();
-    for line in text.lines() {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut i = 0;
+    while let Some(&line) = lines.get(i) {
+        i += 1;
+        // A Markdown table: its rows, aligned in a monospace block (separator row dropped).
+        if !in_code && line.trim_start().starts_with('|') {
+            let mut rows = vec![table_cells(line)];
+            while let Some(next) = lines.get(i).filter(|l| l.trim_start().starts_with('|')) {
+                i += 1;
+                let cells = table_cells(next);
+                if !cells.iter().all(|c| !c.is_empty() && c.chars().all(|ch| matches!(ch, '-' | ':'))) {
+                    rows.push(cells);
+                }
+            }
+            table(ui, &rows, t);
+            continue;
+        }
         if line.trim_start().starts_with("```") {
             if in_code {
                 egui::Frame::NONE.fill(t.input_bg).corner_radius(4.0).inner_margin(6.0).show(ui, |ui| {
@@ -563,6 +578,39 @@ fn markdown(ui: &mut Ui, text: &str, t: &Tokens) {
     if in_code && !code.is_empty() {
         ui.label(RichText::new(code.trim_end()).monospace().size(12.0).color(t.text));
     }
+}
+
+/// The cells of one Markdown table row, trimmed, without inline markers.
+fn table_cells(line: &str) -> Vec<String> {
+    let inner = line.trim().trim_start_matches('|').trim_end_matches('|');
+    inner.split('|').map(|c| c.trim().replace("**", "").replace('`', "")).collect()
+}
+
+fn table(ui: &mut Ui, rows: &[Vec<String>], t: &Tokens) {
+    let cols = rows.iter().map(Vec::len).max().unwrap_or(0).min(12);
+    let widths: Vec<usize> = (0..cols).map(|c| rows.iter().filter_map(|r| r.get(c)).map(|s| s.chars().count().min(40)).max().unwrap_or(0)).collect();
+    let mut out = String::new();
+    for (ri, r) in rows.iter().enumerate().take(200) {
+        let cells: Vec<String> = (0..cols)
+            .map(|c| {
+                let s: String = r.get(c).map(String::as_str).unwrap_or("").chars().take(40).collect();
+                let pad = widths.get(c).copied().unwrap_or(0).saturating_sub(s.chars().count());
+                format!("{s}{}", " ".repeat(pad))
+            })
+            .collect();
+        out.push_str(cells.join("  ").trim_end());
+        out.push('\n');
+        if ri == 0 && rows.len() > 1 {
+            out.push_str(&widths.iter().map(|w| "─".repeat(*w)).collect::<Vec<_>>().join("  "));
+            out.push('\n');
+        }
+    }
+    egui::Frame::NONE.fill(t.input_bg).corner_radius(4.0).inner_margin(6.0).show(ui, |ui| {
+        ui.set_width(ui.available_width());
+        egui::ScrollArea::horizontal().id_salt(ui.next_auto_id()).show(ui, |ui| {
+            ui.add(egui::Label::new(RichText::new(out.trim_end()).monospace().size(12.0).color(t.text)).extend());
+        });
+    });
 }
 
 fn inline(s: &str, t: &Tokens) -> LayoutJob {
@@ -665,6 +713,13 @@ mod tests {
         assert!(c.attach(p).is_err());
         assert!(is_picture_name("Receipt.JPG"));
         assert!(!is_picture_name("book.xlsx"));
+    }
+
+    #[test]
+    fn table_rows_parse() {
+        assert_eq!(table_cells("| **Planet** | `Moons` |"), ["Planet", "Moons"]);
+        assert_eq!(table_cells("|---|:--:|"), ["---", ":--:"]);
+        assert_eq!(table_cells("|"), [""]);
     }
 
     #[test]

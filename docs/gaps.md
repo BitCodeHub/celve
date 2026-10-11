@@ -3,7 +3,7 @@
 > **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-10 · **Change:** major (created from the full re-measure against Excel for Mac 16.113.4 and the issue tracker) · **Target:** Microsoft Excel (Microsoft 365)
 
 Every known shortfall against Excel, one entry each, ranked by user impact (what blocks someone
-using GridCraft for real work first). This is the work list: pick from the top, check the open
+using Celve for real work first). This is the work list: pick from the top, check the open
 PRs first (50 open on 2026-10-10; several already address entries here), and update the entry
 when you land work. Estimates are Opus 5.5 agent-hours. Area detail lives in the linked parity
 docs; the summary is in [target-app-parity.md](target-app-parity.md).

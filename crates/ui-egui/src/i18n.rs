@@ -134,7 +134,7 @@ pub fn saved_language(ui_json: &serde_json::Value) -> Option<Language> {
 /// egui context-data key holding the language of the frame being drawn. Widgets that only get a
 /// `Ui` (not the app) read it to translate their labels; [`set_current`] writes it once per frame.
 fn lang_key() -> egui::Id {
-    egui::Id::new("gridcraft.language")
+    egui::Id::new("celve.language")
 }
 
 /// The language the current frame is drawing in. `En` when unset.
@@ -348,7 +348,7 @@ const JAPANESE: &[(&str, &str)] = &[
     ("Command\nPalette", "コマンド パレット"),
     ("Agent\nControl", "エージェント制御"),
     ("Action\nJournal", "操作ジャーナル"),
-    ("About\nGridCraft", "GridCraft について"),
+    ("About\nCelve", "Celve について"),
     ("Share", "共有"),
     ("Add Chart\nElement", "グラフ要素を追加"),
     ("Change\nChart Type", "グラフの種類の変更"),

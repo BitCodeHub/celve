@@ -3,7 +3,7 @@ name = "gridcraft-functions"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "GridCraft worksheet function library: math, statistics, text, dates, lookup, financial, engineering"
+description = "Celve worksheet function library: math, statistics, text, dates, lookup, financial, engineering"
 
 [lints]
 workspace = true

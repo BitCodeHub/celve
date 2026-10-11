@@ -3,7 +3,7 @@ name = "gridcraft-engine"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "GridCraft engine: sessions, commands, history, clipboard, fill, sort, filter"
+description = "Celve engine: sessions, commands, history, clipboard, fill, sort, filter"
 
 [lints]
 workspace = true

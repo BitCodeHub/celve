@@ -1,4 +1,4 @@
-//! GridCraft file formats: XLSX (transitional and strict) and CSV import/export, plus Excel
+//! Celve file formats: XLSX (transitional and strict) and CSV import/export, plus Excel
 //! 97-2003 (`.xls`) import and XLSB and ODS data import.
 //!
 //! Clean-room implementation from ECMA-376 / ISO/IEC 29500 and observed behaviour. All entry
