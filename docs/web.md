@@ -12,15 +12,19 @@ doing, and it can look at the page itself (screenshots) to check its work.
 
 ```sh
 cd apps/celve-web && trunk build --release        # → dist/web
-cargo run --release -p celve-server               # → http://127.0.0.1:8780/
+cargo run --release -p celve-server               # prints: open http://127.0.0.1:8780/?key=…
 ```
+
+Sage always needs an access key. Without `CELVE_ACCESS_KEY` the server makes one for the run and
+prints the link that carries it; open that link (bookmark it, or set `CELVE_ACCESS_KEY` to keep a
+fixed key).
 
 | Option | Env | Default | |
 |---|---|---|---|
 | `--port` | `CELVE_SERVER_PORT` | 8780 | |
 | `--bind` | `CELVE_SERVER_BIND` | 127.0.0.1 | use `0.0.0.0` behind a TLS proxy |
 | `--dist` | `CELVE_WEB_DIST` | `dist/web` | the trunk build |
-| `--access-key` | `CELVE_ACCESS_KEY` | none | required as `?key=…` to use Sage; **set it whenever the server is reachable by others** |
+| `--access-key` | `CELVE_ACCESS_KEY` | generated per run | required as `?key=…` to use Sage; set a long random one for any server others can reach |
 | | `CELVE_ALLOWED_ORIGINS` | none | extra page origins allowed to connect (comma-separated) |
 
 Links: `?sample=sales` opens a sample, `?sage` opens the Sage pane, `?ask=…` opens it with a
@@ -41,6 +45,10 @@ Browser tab (WASM: grid + workbook)          celve-server
   desktop control channel (`docs/control-protocol.md`). That's why every change shows up live.
 - Only Celve's own page may open a session: the server checks the WebSocket `Origin` against the
   `Host` (plus `CELVE_ALLOWED_ORIGINS`), so other websites can't drive Sage.
+- Every Sage session needs the access key (`?key=…`), so no page you happen to visit can use it.
+  With a generated key the server is local-only: it also accepts only loopback host names
+  (`127.0.0.1`, `localhost`, `[::1]`) and the hosts in `CELVE_ALLOWED_ORIGINS`, which blocks
+  DNS-rebinding pages that point their own domain at your machine.
 - At most 16 tabs run a Sage at once; closing a tab stops its assistant process.
 
 ## Security notes

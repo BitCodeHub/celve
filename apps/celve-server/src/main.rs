@@ -50,7 +50,10 @@ const MAX_PICTURE_BYTES: usize = 5 * 1024 * 1024;
 
 #[derive(Clone)]
 struct Config {
-    access_key: Option<String>,
+    access_key: String,
+    /// No key was configured (one was generated for this run): a local-only server, so only
+    /// loopback host names may connect.
+    local_only: bool,
     /// Extra page origins allowed to connect (`CELVE_ALLOWED_ORIGINS`, comma-separated).
     allowed_origins: Arc<Vec<String>>,
     workroot: PathBuf,
@@ -91,11 +94,14 @@ fn main() {
         log::error!("no web build at {} (run `trunk build --release` in apps/celve-web, or pass --dist)", dist.display());
         std::process::exit(2);
     }
-    if access_key.is_none() && bind != "127.0.0.1" && bind != "localhost" {
-        log::warn!("listening on {bind} without an access key: anyone who can reach it can run Sage. Set CELVE_ACCESS_KEY.");
-    }
+    // Sage always needs a key: without one, any page running in your browser could reach a local
+    // server. When none is configured, make one for this run and print the link that carries it.
+    let generated = access_key.is_none();
+    let access_key = access_key.unwrap_or_else(|| celve_sage::new_token().chars().take(24).collect());
+    let access_key_shown = access_key.clone();
     let config = Config {
         access_key,
+        local_only: generated,
         allowed_origins: Arc::new(
             std::env::var("CELVE_ALLOWED_ORIGINS")
                 .unwrap_or_default()
@@ -128,7 +134,13 @@ fn main() {
                 std::process::exit(1);
             }
         };
-        log::info!("Celve Web on http://{bind}:{port}/ (app from {})", dist.display());
+        let shown = if bind == "0.0.0.0" { "127.0.0.1" } else { bind.as_str() };
+        log::info!("Celve Web (app from {})", dist.display());
+        if generated {
+            log::info!("open http://{shown}:{port}/?key={access_key_shown}  (key generated for this run; set CELVE_ACCESS_KEY to keep one)");
+        } else {
+            log::info!("open http://{shown}:{port}/?key=<your CELVE_ACCESS_KEY>");
+        }
         if let Err(e) = axum::serve(listener, app).await {
             log::error!("server: {e}");
         }
@@ -146,9 +158,14 @@ async fn ws_handler(ws: WebSocketUpgrade, headers: HeaderMap, Query(q): Query<Ha
         log::warn!("refused a WebSocket from another site's page");
         return (StatusCode::FORBIDDEN, "cross-site connection refused").into_response();
     }
-    if let Some(key) = &config.access_key
-        && !q.get("key").is_some_and(|k| constant_time_eq(k.as_bytes(), key.as_bytes()))
-    {
+    // DNS rebinding: an attacker's domain resolving to this machine would pass the origin check
+    // (its page's Origin and Host agree). A local-only server (generated key) also accepts only
+    // loopback host names and the origins you allow.
+    if config.local_only && !local_host_allowed(headers.get(header::HOST).and_then(|v| v.to_str().ok()), &config.allowed_origins) {
+        log::warn!("refused a WebSocket for a non-local host name without an access key");
+        return (StatusCode::FORBIDDEN, "set CELVE_ACCESS_KEY to serve Sage under this host name").into_response();
+    }
+    if !q.get("key").is_some_and(|k| constant_time_eq(k.as_bytes(), config.access_key.as_bytes())) {
         return (StatusCode::UNAUTHORIZED, "access key required").into_response();
     }
     ws.max_message_size(MAX_MESSAGE).on_upgrade(move |socket| session(socket, config))
@@ -164,6 +181,19 @@ fn origin_allowed(origin: Option<&str>, host: Option<&str>, extra: &[String]) ->
     }
     let origin_host = origin.split_once("://").map(|(_, rest)| rest).unwrap_or("");
     host.is_some_and(|h| !h.is_empty() && origin_host.eq_ignore_ascii_case(h))
+}
+
+/// The `Host` is a loopback name (`127.0.0.1`, `localhost`, `[::1]`, any port) or the host of
+/// one of the allowed origins.
+fn local_host_allowed(host: Option<&str>, extra: &[String]) -> bool {
+    let Some(host) = host.map(str::to_ascii_lowercase) else { return false };
+    let name = if host.starts_with('[') {
+        host.split(']').next().map(|h| format!("{h}]")).unwrap_or_default()
+    } else {
+        host.split(':').next().unwrap_or("").to_string()
+    };
+    matches!(name.as_str(), "127.0.0.1" | "localhost" | "[::1]")
+        || extra.iter().any(|o| o.split_once("://").map(|(_, h)| h).is_some_and(|h| h.eq_ignore_ascii_case(&host)))
 }
 
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
@@ -395,6 +425,19 @@ mod tests {
         assert!(!origin_allowed(Some("http://127.0.0.1:8780"), None, &none));
         assert!(origin_allowed(None, Some("127.0.0.1:8780"), &none));
         assert!(origin_allowed(Some("https://app.example"), Some("api.example"), &["https://app.example".into()]));
+    }
+
+    #[test]
+    fn rebinding_names_are_refused_without_a_key() {
+        let none: Vec<String> = vec![];
+        assert!(local_host_allowed(Some("127.0.0.1:8780"), &none));
+        assert!(local_host_allowed(Some("localhost:8780"), &none));
+        assert!(local_host_allowed(Some("[::1]:8780"), &none));
+        assert!(!local_host_allowed(Some("evil.example:8780"), &none));
+        assert!(!local_host_allowed(Some("127.0.0.1.evil.example:8780"), &none));
+        assert!(!local_host_allowed(Some("localhost.evil.example"), &none));
+        assert!(!local_host_allowed(None, &none));
+        assert!(local_host_allowed(Some("celve.example.com"), &["https://celve.example.com".into()]));
     }
 
     #[test]
