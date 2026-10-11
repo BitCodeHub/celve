@@ -1,6 +1,6 @@
 # File-format parity
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-10 · **Change:** major (created; every format Excel reads or writes, against the code on main) · **Target:** Microsoft Excel (Microsoft 365), Excel for Mac 16.113.4
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-10 · **Change:** minor (`.xls` import) · **Target:** Microsoft Excel (Microsoft 365), Excel for Mac 16.113.4
 
 Every format Excel opens or saves, with GridCraft's read and write support, fidelity and tests.
 Part of [target-app-parity.md](target-app-parity.md). **File formats: ~50% ready, 80–120 h**
@@ -9,7 +9,7 @@ Part of [target-app-parity.md](target-app-parity.md). **File formats: ~50% ready
 Excel's list comes from Microsoft's public "File formats that are supported in Excel"
 documentation (the Office bundle is off limits under this repo's clean-room rule). GridCraft's
 support comes from `crates/engine/src/io.rs` (`FileKind`), `crates/xlsx/src` and the tests in
-`crates/xlsx/src/tests/` (round-trip, fixtures, malformed input, CSV, ODS, XLSB, PivotTables).
+`crates/xlsx/src/tests/` (round-trip, fixtures, malformed input, CSV, ODS, XLS, XLSB, PivotTables).
 
 ## Workbook formats
 
@@ -20,8 +20,8 @@ support comes from `crates/engine/src/io.rs` (`FileKind`), `crates/xlsx/src` and
 | `.xlsm` Macro-Enabled Workbook | R/W | yes | yes, **without macros** | VBA project dropped with a warning; saving as `.xlsm` loses the macros (#6) | — |
 | `.xltx` / `.xltm` templates | R/W | yes | partial | Saved with the workbook content type, not the template one; "new from template" behaviour missing | — |
 | `.xlsb` Binary Workbook | R/W | **values only** (#101) | no | Names, visibility, numbers, text, booleans, errors, merges, cached formula results; no formulas, formatting, charts, names | `xlsb_tests.rs` |
-| `.xls` Excel 97-2003 (BIFF8) | R/W | **no** (#121); recognised and refused with a message since #17 | no | Still common in finance, government and legacy systems | — |
-| `.xlt` Excel 97-2003 template | R/W | no | no | | — |
+| `.xls` Excel 97-2003 (BIFF8) | R/W | **yes, import** (#121) | no (Save goes to `.xlsx`) | Own [MS-CFB] reader (FAT, mini stream, DIFAT, loop checks) and [MS-XLS] record reader (CONTINUE, split strings). Values, shared strings, saved formula results; **formulas** decoded from their tokens (operators, 2-D/3-D refs, shared and array formulas, names, add-in and future functions, array constants); number formats, fonts, fills, borders, alignment, custom palette; merges, column widths, row heights, hidden rows/columns/sheets, frozen panes, zoom, view flags; defined names; 1904 dates. **Not imported (warned):** charts, drawings, notes, hyperlinks, conditional formats, validation, AutoFilter, print areas, data tables, macros, links to other workbooks. Password-protected and Excel 5/95 (BIFF5) files are refused with a message | `xls_tests.rs`, CLI `xls_imports_and_converts_to_xlsx` |
+| `.xlt` Excel 97-2003 template | R/W | yes, as `.xls` import | no | | — |
 | `.xlam` / `.xla` add-ins | R/W | no | no | VBA; out of scope | — |
 | `.xml` XML Spreadsheet 2003 | R/W | no | no | Simple to support | — |
 | `.ods` OpenDocument Spreadsheet | R/W | **values only** (#100) | no | Sheets, values, dates, merges, repeated cells, cached formula results; no formulas, formatting, charts; encrypted ODS refused | `ods_tests.rs` |
@@ -64,7 +64,7 @@ refresh. Counted under features (Get & Transform, ~10% ready), not here.
 | Real-world XLSX corpus run (craftrules test-corpora standard), and confirm Excel opens our output with no repair prompt (owner runs Excel) | 15–25 |
 | Preserve unmodelled XLSX parts and extensions on round trip (pass-through with relationship fix-up) | 10–15 |
 | Streaming XLSX reader for very large files (#175), part-size limits that degrade instead of failing | 10–15 |
-| Legacy `.xls` (BIFF8) import: cells, formulas, styles, names; then write | 20–30 |
+| Legacy `.xls` (BIFF8): import landed (#121); remaining: notes, hyperlinks, conditional formats, validation and print settings on import, a real-file corpus run, then write | 10–18 |
 | Encrypted workbooks: open with password prompt, save with password (#11) | 8–12 |
 | XLSB and ODS: formulas and formatting on import; then write | 10–15 |
 | CSV/text: displayed-value export, encoding choice, `.prn`, `.dif`, `.slk`, XML Spreadsheet 2003 | 5–8 |
@@ -74,5 +74,6 @@ refresh. Counted under features (Get & Transform, ~10% ready), not here.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-10 | minor | `.xls` (BIFF8) import: values, formulas, styles, layout and names (#121); `.xls` work estimate cut to 10–18 h |
 | 2026-10-10 | minor | Encrypted and `.xls` files are now recognised and refused with a message (#17) |
 | 2026-10-10 | major | Created: every Excel format with our read/write support; XLSB and ODS values-only imports recorded; `.xls`, encryption and large files flagged as beta gates |

@@ -1,4 +1,5 @@
-//! Opening and saving files: XLSX, XLSB and ODS data import, CSV/TSV, JSON (debug), HTML export.
+//! Opening and saving files: XLSX, Excel 97-2003 (.xls) import, XLSB and ODS data import,
+//! CSV/TSV, JSON (debug), HTML export.
 
 use std::fmt::Write as _;
 
@@ -11,6 +12,8 @@ use crate::{EngineError, Result};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FileKind {
     Xlsx,
+    /// Excel 97-2003 workbook (BIFF8): import only.
+    Xls,
     Xlsb,
     Ods,
     Csv,
@@ -24,6 +27,7 @@ impl FileKind {
         let ext = std::path::Path::new(path).extension()?.to_str()?.to_ascii_lowercase();
         Some(match ext.as_str() {
             "xlsx" | "xlsm" | "xltx" | "xltm" => FileKind::Xlsx,
+            "xls" | "xlt" => FileKind::Xls,
             "xlsb" => FileKind::Xlsb,
             "ods" => FileKind::Ods,
             "csv" => FileKind::Csv,
@@ -47,18 +51,23 @@ pub fn open_bytes(name: &str, bytes: &[u8]) -> Result<(Workbook, Vec<String>)> {
     }
     if sniffed == gridcraft_xlsx::Format::LegacyBinary {
         return Err(EngineError::Other(format!(
-            "'{name}' is an Excel 97-2003 (.xls) workbook or another legacy binary file. GridCraft doesn't open these yet; save it as .xlsx in Excel and try again."
+            "'{name}' is a legacy Office binary file without a readable workbook in it. If it's an Excel 97-2003 (.xls) file it may be damaged: open it in Excel, save it as .xlsx and try again."
         )));
     }
-    // Content wins over the extension: an ODS or XLSB package is imported as what it is,
+    // Content wins over the extension: an XLS, ODS or XLSB file is imported as what it is,
     // whatever it is called; the extension only decides when the bytes don't say.
     let import = match sniffed {
+        gridcraft_xlsx::Format::Xls => Some(FileKind::Xls),
         gridcraft_xlsx::Format::Ods => Some(FileKind::Ods),
         gridcraft_xlsx::Format::Xlsb => Some(FileKind::Xlsb),
         _ => kind.filter(|k| matches!(k, FileKind::Ods | FileKind::Xlsb)),
     };
     if let Some(import) = import {
-        let read = if import == FileKind::Ods { gridcraft_xlsx::read_ods } else { gridcraft_xlsx::read_xlsb };
+        let read = match import {
+            FileKind::Xls => gridcraft_xlsx::read_xls,
+            FileKind::Ods => gridcraft_xlsx::read_ods,
+            _ => gridcraft_xlsx::read_xlsb,
+        };
         let (wb, report) = read(bytes).map_err(|e| EngineError::Other(format!("We can't import '{name}': {e}")))?;
         return Ok((wb, report.warnings));
     }
@@ -107,6 +116,9 @@ pub fn save_bytes(wb: &Workbook, path: &str) -> Result<Vec<u8>> {
     let sheet = wb.active_sheet;
     match FileKind::from_path(path).unwrap_or(FileKind::Xlsx) {
         FileKind::Xlsx => gridcraft_xlsx::write_xlsx(wb).map_err(|e| EngineError::Other(e.to_string())),
+        FileKind::Xls => Err(EngineError::Other(
+            "Excel 97-2003 (.xls) files can be opened but not saved. Save as .xlsx or another supported export format.".into(),
+        )),
         FileKind::Xlsb => Err(EngineError::Other("XLSB is supported for data import only. Save as .xlsx or another supported export format.".into())),
         FileKind::Ods => Err(EngineError::Other("ODS is supported for data import only. Save as .xlsx or another supported export format.".into())),
         FileKind::Csv => Ok(wb.sheet(sheet).map(|sh| gridcraft_xlsx::write_csv(sh, wb, b',')).unwrap_or_default()),

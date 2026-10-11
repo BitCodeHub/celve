@@ -42,7 +42,7 @@ long `.xls` track, so about half parallelizes (≈30–50 wall-clock hours with 
 
 Why alpha: all six core workflows in the [alpha gate](docs/roadmap.md#alpha-gate) pass end to end on macOS with save and reopen, and the core workflow works end to end (open an XLSX, enter formulas and data, format, sort
 and filter, chart, pivot, print to PDF, save XLSX), but users still hit blocking gaps on real
-files: 100 MB workbooks don't open (#175), there's no `.xls` (#121), Arabic and Devanagari text
+files: 100 MB workbooks don't open (#175), `.xls` import is new and unproven on real files (#121), Arabic and Devanagari text
 isn't shaped (Chinese text still reported in #142), charts lose their type and options on round trip, and
 nobody has yet confirmed that Excel opens our output without a repair prompt across a real
 corpus. Beta needs those closed (see [beta gates](docs/roadmap.md#beta-gates)).
@@ -124,13 +124,14 @@ Ranked; estimates in Opus 5.5 agent-hours. Detail and the full beta-gate list in
 3. **Large workbooks and recalc speed**: 100 MB XLSX, 1M rows, multi-threaded recalc: 40–60 h.
 4. **Charts depth**: kinds and options round-trip, axes, trendlines, error bars: 25–35 h.
 5. **Text in every script** (CJK, Thai, Arabic, Devanagari) in cells and PDF: 12–20 h.
-6. **Legacy `.xls` import and password-protected workbooks**: 20–30 h.
+6. **Password-protected workbooks, and `.xls` import on real files** (import landed, #121): 18–30 h.
 7. **Localization**: extend the catalog past the ribbon, then the twelve languages: 100–165 h.
 
 ## Progress log
 
 | Date | What landed |
 |---|---|
+| 2026-10-10 | Excel 97-2003 `.xls` (BIFF8) import with formulas, formatting, layout and names (#121); own compound-file stream reader |
 | 2026-10-10 | Ribbon translated into Japanese, Chinese, Korean, Brazilian Portuguese and Russian with system-language default (#31, #104, #82); CJK/Thai/Hebrew font fallback (#38); clear messages for encrypted and `.xls` files (#17); smooth line charts (#62). Progress docs restructured to the craftrules standard; full re-measure (this page). Initial ribbon key tips (#43), in-place text box editing (#84), copy as HTML table (#36). ODS and XLSB data import (#100, #101); recalc linear in the number of range formulas (#66); RISC-V Linux build; Flatpak repository on Pages; web cell-commit trap fixed |
 | 2026-10-09 | Community fixes: spill range operator `A1#`, sheet-scoped names, protection refuses locked-cell edits, Insert/Delete Cells adjust references, `DATE(1900,2,29)`, SUMIF sizing, `ROUND` at 15 digits, `_xlpm.` LAMBDA parameters in XLSX, vertical scrollbar, system appearance, border previews; v0.4.0 |
 | 2026-10-08 | v0.2.0 and v0.3.0 releases; Flatpak, AppImage zsync, branded DMG; desktop log file; DirectX 12 default on Windows |
@@ -142,6 +143,7 @@ Ranked; estimates in Opus 5.5 agent-hours. Detail and the full beta-gate list in
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-10 | minor | `.xls` import landed (#121): blocking-gaps line, focus item 6 and progress log updated; readiness numbers not re-measured |
 | 2026-10-10 | minor | Readiness-by-audience table with hours to ~95% per audience; full number unchanged (additive weighted sum) |
 | 2026-10-10 | minor | Added Mainstream practitioner (~50%) and Essentials user (~63%); languages updated for the 10-10 merges (ribbon in ja, zh, ko, pt-BR, ru); localization 5%→10%; full number re-checked (51.6, unchanged) |
 | 2026-10-10 | minor | Checked against the alpha gate (six core workflows pass): stays alpha |

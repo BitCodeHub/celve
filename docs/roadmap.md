@@ -49,7 +49,7 @@ and edge features. Each gate links its gap.
 | Charts: kinds and options survive round trip; axes, trendlines, error bars | #4 | 25–35 |
 | Text in every script renders and exports | #5 | 12–20 |
 | Calculation correctness bugs closed; iterative calculation | #6 | 10–15 |
-| `.xls` import, password-protected workbooks | #7 | 28–42 |
+| Password-protected workbooks; `.xls` import (landed, #121) checked on real files | #7 | 18–30 |
 | PivotTables: slicers, calculated fields, PivotCharts, verified in Excel | #8 | 20–30 |
 | Keyboard: key tips, shortcut audit, context menus | #9 | 12–20 |
 | Field crashes and freezes closed; autosave/recovery soak | #10 | 8–12 |
@@ -112,6 +112,7 @@ to check our files, and Windows machines with the reported GPU drivers.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-10 | minor | Beta gate #7: `.xls` import landed (#121); encryption and a real-file check remain |
 | 2026-10-10 | minor | Current focus and M15 updated for the 10-10 merges |
 | 2026-10-10 | minor | Added the alpha gate table (six core workflows; passes, stays alpha) |
 | 2026-10-10 | major | Created: current focus, beta gates (~160–240 h), milestones moved from ROADMAP.md, post-beta ranking |

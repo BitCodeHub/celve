@@ -64,11 +64,14 @@ No alpha blockers: every core workflow passes the [alpha gate](roadmap.md#alpha-
 - **Impact:** wrong numbers are worse than missing features.
 - **Estimate:** 10–15 h. [function-parity.md](function-parity.md#formula-language)
 
-### 7. No legacy `.xls`; no password-protected workbooks (FF)
-- **Evidence:** #121. Since #17 (closed #11) both are recognised through a CFB sniff and refused with a clear message, but neither opens.
-- **Impact:** common in finance, government and anything older than 2007; encrypted files are
-  routine in business.
-- **Estimate:** 28–42 h (`.xls` read 20–30, encryption 8–12). [file-format-parity.md](file-format-parity.md)
+### 7. No password-protected workbooks; `.xls` import unproven on real files (FF)
+- **Evidence:** #11, #121. `.xls` (BIFF8) now opens: values, formulas, styles, layout and names
+  (#121). Encrypted workbooks are still recognised and refused with a clear message (#17). The
+  `.xls` reader is tested on generated files only; notes, hyperlinks, conditional formats,
+  validation and print settings are skipped with warnings.
+- **Impact:** encrypted files are routine in business; `.xls` is common in finance, government
+  and anything older than 2007.
+- **Estimate:** 18–30 h (encryption 8–12, `.xls` corpus run and the skipped features 10–18). [file-format-parity.md](file-format-parity.md)
 
 ### 8. PivotTables: no slicers, calculated fields, PivotCharts; unverified in Excel (F)
 - **Evidence:** `parity-checklist.md` missing `insert.slicer`, `insert.timeline`,
@@ -149,6 +152,7 @@ No alpha blockers: every core workflow passes the [alpha gate](roadmap.md#alpha-
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-10 | minor | Gap 7: `.xls` import landed (#121); encryption remains |
 | 2026-10-10 | minor | Updated for the 10-10 merges (#17, #31, #38, #62, #82, #104, #116) and the new chart resize bug (#190) |
 | 2026-10-10 | minor | Noted that no gap blocks the alpha gate |
 | 2026-10-10 | major | Created: 24 ranked gaps with evidence, from the full re-measure and the 60 open issues |
