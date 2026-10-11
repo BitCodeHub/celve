@@ -7,7 +7,7 @@
 //! A host reports progress as [`SageEvent`]s, picked up once per frame in [`poll`].
 
 use egui::text::LayoutJob;
-use egui::{Color32, FontId, RichText, TextFormat, Ui, vec2};
+use egui::{Color32, FontId, Rect, RichText, TextFormat, Ui, pos2, vec2};
 use serde_json::{Value as Json, json};
 
 use crate::SheetApp;
@@ -260,7 +260,7 @@ pub fn context(app: &SheetApp) -> String {
     )
 }
 
-/// UI commands: `view.sage {on?}`, `sage.ask {text, pictures?: [path]}`, `sage.stop`, `sage.reset`,
+/// UI commands: `view.sage {on?}`, `sage.ask {text, pictures?: [path]}`, `sage.draft {text}`, `sage.stop`, `sage.reset`,
 /// `sage.state` (the conversation, for agents and tests).
 pub fn run_command(app: &mut SheetApp, id: &str, p: &Json) -> Option<Result<Json, String>> {
     let r = match id {
@@ -295,6 +295,13 @@ pub fn run_command(app: &mut SheetApp, id: &str, p: &Json) -> Option<Result<Json
             app.sage.open = true;
             app.sage.input = text;
             send(app).map(|()| json!({"sent": true}))
+        }
+        "sage.draft" => {
+            // Fills in the message box without sending it (links can't make Sage act).
+            app.sage.input = p.get("text").and_then(Json::as_str).unwrap_or("").chars().take(MAX_INPUT_CHARS).collect();
+            app.sage.open = true;
+            app.sage.focus_input = true;
+            Ok(Json::Null)
         }
         "sage.stop" => {
             stop(app);
@@ -401,29 +408,33 @@ pub fn show(app: &mut SheetApp, ui: &mut Ui) {
     }
     let t = Tokens::get(ui.ctx());
     egui::Panel::right("sage_pane")
-        .default_size(360.0)
-        .min_size(280.0)
+        .default_size(380.0)
+        .min_size(300.0)
         .resizable(true)
-        .frame(egui::Frame::NONE.fill(t.ribbon).inner_margin(10))
+        .frame(
+            egui::Frame::NONE
+                .fill(t.window)
+                .inner_margin(egui::Margin { left: 12, right: 12, top: 10, bottom: 10 })
+                .stroke(egui::Stroke::new(1.0, t.ribbon_border)),
+        )
         .show(ui, |ui| {
-            header(app, ui, &t);
-            ui.separator();
             let available = app.services.sage.as_ref().map(|h| h.availability()).unwrap_or_else(|| Err("Sage runs in the Celve desktop app.".into()));
-            let composer_h = if available.is_ok() { 118.0 + if app.sage.attachments.is_empty() { 0.0 } else { 26.0 } } else { 0.0 };
+            header(app, ui, &t, &available);
+            ui.add_space(6.0);
+            let composer_h = if available.is_ok() { 132.0 + if app.sage.attachments.is_empty() { 0.0 } else { 30.0 } } else { 0.0 };
             let list_h = (ui.available_height() - composer_h).max(80.0);
             egui::ScrollArea::vertical().max_height(list_h).auto_shrink([false, false]).stick_to_bottom(true).show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 if app.sage.messages.is_empty() {
                     welcome(app, ui, &t);
                 }
-                for m in &app.sage.messages {
-                    message(ui, m, &t);
+                let last = app.sage.messages.len().saturating_sub(1);
+                let busy = app.sage.busy;
+                for (i, m) in app.sage.messages.iter().enumerate() {
+                    message(ui, m, &t, busy && i == last);
                 }
-                if app.sage.busy {
-                    ui.horizontal(|ui| {
-                        ui.add(egui::Spinner::new().size(14.0));
-                        ui.label(RichText::new("Sage is working…").color(t.text_dim).italics());
-                    });
+                if busy {
+                    working(ui, &t, app.sage.messages.last().and_then(|m| m.steps.last()).map(String::as_str));
                 }
                 if std::mem::take(&mut app.sage.scroll_to_end) {
                     ui.scroll_to_cursor(Some(egui::Align::BOTTOM));
@@ -433,91 +444,310 @@ pub fn show(app: &mut SheetApp, ui: &mut Ui) {
                 Ok(()) => composer(app, ui, &t),
                 Err(why) => {
                     ui.add_space(8.0);
-                    ui.label(RichText::new(why).color(t.text_dim));
+                    card(ui, &t, |ui| {
+                        ui.label(RichText::new(why).color(t.text_dim));
+                    });
                 }
             }
         });
 }
 
-fn header(app: &mut SheetApp, ui: &mut Ui, t: &Tokens) {
+/// The Celve mark and wordmark for the title bar.
+pub fn brand(ui: &mut Ui) {
+    let t = Tokens::get(ui.ctx());
+    if let Some(tex) = logo(ui.ctx()) {
+        ui.add(egui::Image::new((tex.id(), vec2(20.0, 20.0))));
+    }
+    ui.label(RichText::new("Celve").font(theme::ui_bold(14.0)).color(if t.dark { t.text } else { Color32::from_rgb(0x0B, 0x5A, 0x2F) }));
+}
+
+/// The app icon as a texture (decoded once).
+fn logo(ctx: &egui::Context) -> Option<egui::TextureHandle> {
+    let id = egui::Id::new("celve_logo_texture");
+    if let Some(t) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(id)) {
+        return Some(t);
+    }
+    let bytes = include_bytes!("../../../assets/app-icon/hicolor/64x64/apps/cloud.agentlumi.celve.png");
+    let img = image::load_from_memory(bytes).ok()?.to_rgba8();
+    let size = [img.width() as usize, img.height() as usize];
+    let tex = ctx.load_texture("celve_logo", egui::ColorImage::from_rgba_unmultiplied(size, img.as_raw()), egui::TextureOptions::LINEAR);
+    ctx.data_mut(|d| d.insert_temp(id, tex.clone()));
+    Some(tex)
+}
+
+/// The title bar's "Ask Sage" pill.
+pub fn ask_button(ui: &mut Ui, open: bool, busy: bool) -> egui::Response {
+    let t = Tokens::get(ui.ctx());
+    let galley = ui.painter().layout_no_wrap("Ask Sage".into(), theme::ui_bold(12.5), Color32::WHITE);
+    let (r, resp) = ui.allocate_exact_size(vec2(galley.size().x + 40.0, 26.0), egui::Sense::click());
+    let p = ui.painter();
+    let base = if busy {
+        t.sage
+    } else if open {
+        t.accent_dark
+    } else {
+        t.accent
+    };
+    let fill = if resp.hovered() { t.accent_dark } else { base };
+    p.rect_filled(r, 13.0, fill);
+    crate::icons::paint(p, Rect::from_min_size(r.min + vec2(9.0, 5.0), vec2(16.0, 16.0)), Icon::Sage, Color32::WHITE);
+    p.galley(pos2(r.left() + 29.0, r.center().y - galley.size().y / 2.0), galley, Color32::WHITE);
+    resp.on_hover_text("Sage: ask anything, or let Sage build it (⌘⇧I)").on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+/// The status bar's live line while Sage works ("Sage is editing B2:D9").
+pub fn status(app: &SheetApp, ui: &mut Ui) {
+    if !app.sage.busy {
+        return;
+    }
+    let t = Tokens::get(ui.ctx());
+    ui.add_space(14.0);
+    let (r, _) = ui.allocate_exact_size(vec2(14.0, 14.0), egui::Sense::hover());
+    crate::icons::paint(ui.painter(), r, Icon::Sage, t.text);
+    let what = match &app.sage.focus {
+        Some(f) if crate::now_ms() - f.at < FOCUS_MS => {
+            let place = match &f.sheet {
+                Some(s) => format!("{s}!{}", f.range.a1()),
+                None => f.range.a1(),
+            };
+            format!("Sage is {} {place}", if f.write { "editing" } else { "reading" })
+        }
+        _ => "Sage is working…".into(),
+    };
+    ui.label(RichText::new(what).font(theme::ui_font(12.5)).color(t.sage));
+}
+
+/// Sage's avatar: the sparkle on a green disc.
+pub fn avatar(ui: &mut Ui, size: f32) -> egui::Response {
+    let (r, resp) = ui.allocate_exact_size(vec2(size, size), egui::Sense::hover());
+    let p = ui.painter();
+    p.circle_filled(r.center(), size / 2.0, Color32::from_rgb(0x0B, 0x5A, 0x2F));
+    p.circle_filled(r.center() - vec2(0.0, size * 0.06), size / 2.0 - size * 0.08, Color32::from_rgb(0x12, 0x8A, 0x4B));
+    crate::icons::paint(p, r.shrink(size * 0.2), Icon::Sage, Color32::WHITE);
+    resp
+}
+
+fn card<R>(ui: &mut Ui, t: &Tokens, add: impl FnOnce(&mut Ui) -> R) -> R {
+    egui::Frame::NONE
+        .fill(t.ribbon)
+        .stroke(egui::Stroke::new(1.0, t.ribbon_border))
+        .corner_radius(12.0)
+        .inner_margin(egui::Margin::symmetric(12, 10))
+        .shadow(egui::Shadow { offset: [0, 1], blur: 6, spread: 0, color: t.shadow.gamma_multiply(0.35) })
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            add(ui)
+        })
+        .inner
+}
+
+fn header(app: &mut SheetApp, ui: &mut Ui, t: &Tokens, available: &Result<(), String>) {
     ui.horizontal(|ui| {
-        let (r, _) = ui.allocate_exact_size(vec2(20.0, 20.0), egui::Sense::hover());
-        crate::icons::paint(ui.painter(), r, Icon::Sage, t.text);
-        ui.label(RichText::new("Sage").font(theme::ui_bold(15.0)));
+        avatar(ui, 32.0);
+        ui.add_space(4.0);
+        ui.vertical(|ui| {
+            ui.spacing_mut().item_spacing.y = 1.0;
+            ui.label(RichText::new("Sage").font(theme::ui_bold(16.0)).color(t.text));
+            let (dot, status) = match available {
+                Ok(()) if app.sage.busy => (t.sage, "Working on your sheet"),
+                Ok(()) => (Color32::from_rgb(0x2E, 0xB6, 0x6B), "Ready · sees this workbook"),
+                Err(why) if why.starts_with("Connecting") => (Color32::from_rgb(0xE8, 0xA3, 0x17), "Connecting…"),
+                Err(_) => (t.text_disabled, "Offline"),
+            };
+            ui.horizontal(|ui| {
+                let (r, _) = ui.allocate_exact_size(vec2(8.0, 12.0), egui::Sense::hover());
+                let pulse = if app.sage.busy { 0.6 + 0.4 * ((crate::now_ms() / 300.0).sin() as f32).abs() } else { 1.0 };
+                ui.painter().circle_filled(r.center(), 3.5, dot.gamma_multiply(pulse));
+                ui.label(RichText::new(status).size(11.5).color(t.text_dim));
+            });
+        });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if crate::widgets::icon_button(ui, Icon::Close, t.text_dim, "Close Sage", vec2(22.0, 22.0)).clicked() {
+            if crate::widgets::icon_button(ui, Icon::Close, t.text_dim, "Close Sage", vec2(24.0, 24.0)).clicked() {
                 app.sage.open = false;
             }
-            if !app.sage.messages.is_empty() && ui.small_button("New chat").on_hover_text("Start a new conversation").clicked() {
-                reset(app);
+            if !app.sage.messages.is_empty() {
+                let b = egui::Button::new(RichText::new("New chat").size(12.0).color(t.text))
+                    .fill(t.ribbon)
+                    .stroke(egui::Stroke::new(1.0, t.ribbon_border))
+                    .corner_radius(8.0);
+                if ui.add(b).on_hover_text("Start a new conversation").clicked() {
+                    reset(app);
+                }
             }
         });
     });
 }
 
-const SUGGESTIONS: [&str; 4] = [
-    "Build a monthly budget with income, expenses and a chart",
-    "Explain what's on this sheet",
-    "Clean up and format the selected table",
-    "Add a summary sheet with totals by category",
+const SUGGESTIONS: [(Icon, &str, &str); 4] = [
+    (Icon::Chart, "Build a budget", "Build a monthly budget with income, expenses and a chart"),
+    (Icon::Search, "Explain this sheet", "Explain what's on this sheet"),
+    (Icon::Brush, "Tidy my table", "Clean up and format the selected table"),
+    (Icon::Sheet, "Summarise", "Add a summary sheet with totals by category"),
 ];
 
 fn welcome(app: &mut SheetApp, ui: &mut Ui, t: &Tokens) {
-    ui.add_space(6.0);
-    ui.label(RichText::new("Hi, I'm Sage.").font(theme::ui_bold(16.0)));
-    ui.label(
-        RichText::new(
-            "Ask me anything. I can see this window, build workbooks and sheets, write formulas, format, sort and chart. Attach a photo of a receipt or a table and I'll turn it into a sheet.",
-        )
-        .color(t.text_dim),
-    );
-    ui.add_space(8.0);
-    for s in SUGGESTIONS {
-        let b = egui::Button::new(RichText::new(s).color(t.text)).fill(t.window).corner_radius(8.0).min_size(vec2(ui.available_width(), 30.0));
-        if ui.add(b).clicked() {
-            app.sage.input = s.to_string();
-            if let Err(e) = send(app) {
-                app.sage.apply(SageEvent::Error(e));
+    ui.add_space(18.0);
+    ui.vertical_centered(|ui| {
+        avatar(ui, 56.0);
+        ui.add_space(8.0);
+        ui.label(RichText::new("Hi, I'm Sage").font(theme::ui_bold(20.0)).color(t.text));
+        ui.add_space(2.0);
+        ui.label(
+            RichText::new(
+                "I see everything in this workbook and can build it with you. Ask a question, or tell me what to make, and watch it happen.",
+            )
+            .size(12.5)
+            .color(t.text_dim),
+        );
+    });
+    ui.add_space(14.0);
+    let w = (ui.available_width() - 8.0) / 2.0;
+    let mut chosen = None;
+    egui::Grid::new("sage_suggestions").num_columns(2).spacing(vec2(8.0, 8.0)).show(ui, |ui| {
+        for (i, (icon, title, prompt)) in SUGGESTIONS.iter().enumerate() {
+            let (r, resp) = ui.allocate_exact_size(vec2(w, 64.0), egui::Sense::click());
+            let hovered = resp.hovered();
+            let p = ui.painter();
+            p.rect(
+                r,
+                12.0,
+                if hovered { t.accent_soft } else { t.ribbon },
+                egui::Stroke::new(1.0, if hovered { t.accent } else { t.ribbon_border }),
+                egui::StrokeKind::Inside,
+            );
+            crate::icons::paint(p, Rect::from_min_size(r.min + vec2(10.0, 10.0), vec2(18.0, 18.0)), *icon, t.accent);
+            p.text(r.min + vec2(10.0, 36.0), egui::Align2::LEFT_TOP, *title, theme::ui_bold(12.5), t.text);
+            if resp.on_hover_text(*prompt).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                chosen = Some(*prompt);
             }
+            if i % 2 == 1 {
+                ui.end_row();
+            }
+        }
+    });
+    if let Some(prompt) = chosen {
+        app.sage.input = prompt.to_string();
+        if let Err(e) = send(app) {
+            app.sage.apply(SageEvent::Error(e));
+        }
+    }
+    ui.add_space(10.0);
+    ui.vertical_centered(|ui| {
+        ui.label(RichText::new("Tip: drop a photo of a receipt or a table here and ask for a sheet.").size(11.5).color(t.text_disabled));
+    });
+}
+
+fn message(ui: &mut Ui, m: &Message, t: &Tokens, live: bool) {
+    ui.add_space(8.0);
+    match m.role {
+        Role::User => {
+            // Right-aligned bubble.
+            let max = ui.available_width() * 0.85;
+            // Top-down, right-aligned: the text wraps inside the bubble instead of widening the pane.
+            ui.with_layout(egui::Layout::top_down(egui::Align::Max), |ui| {
+                egui::Frame::NONE
+                    .fill(t.accent)
+                    .corner_radius(egui::CornerRadius { nw: 14, ne: 14, sw: 14, se: 4 })
+                    .inner_margin(egui::Margin::symmetric(12, 8))
+                    .show(ui, |ui| {
+                        ui.set_max_width(max - 24.0);
+                        ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                            for p in &m.pictures {
+                                ui.label(RichText::new(format!("🖼 {p}")).size(11.5).color(Color32::WHITE.gamma_multiply(0.85)));
+                            }
+                            markdown(ui, &m.text, t, Color32::WHITE);
+                        });
+                    });
+            });
+        }
+        Role::Sage => {
+            ui.horizontal_top(|ui| {
+                avatar(ui, 24.0);
+                ui.add_space(2.0);
+                ui.vertical(|ui| {
+                    card(ui, t, |ui| {
+                        steps(ui, m, t, live);
+                        if !m.text.is_empty() {
+                            if !m.steps.is_empty() {
+                                ui.add_space(4.0);
+                            }
+                            markdown(ui, &m.text, t, t.text);
+                        }
+                    });
+                });
+            });
+        }
+        Role::Error => {
+            egui::Frame::NONE
+                .fill(t.danger.gamma_multiply(0.10))
+                .stroke(egui::Stroke::new(1.0, t.danger.gamma_multiply(0.6)))
+                .corner_radius(12.0)
+                .inner_margin(egui::Margin::symmetric(12, 8))
+                .show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    ui.label(RichText::new(&m.text).color(t.danger));
+                });
         }
     }
 }
 
-fn message(ui: &mut Ui, m: &Message, t: &Tokens) {
-    ui.add_space(6.0);
-    let (fill, stroke) = match m.role {
-        Role::User => (t.accent_soft, Color32::TRANSPARENT),
-        Role::Sage => (t.window, t.separator),
-        Role::Error => (Color32::from_rgba_unmultiplied(0xD1, 0x3B, 0x2F, 28), Color32::from_rgb(0xD1, 0x3B, 0x2F)),
+/// What Sage did: the latest few while it works, folded into "N actions" afterwards.
+fn steps(ui: &mut Ui, m: &Message, t: &Tokens, live: bool) {
+    if m.steps.is_empty() {
+        return;
+    }
+    let line = |ui: &mut Ui, s: &str| {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 6.0;
+            let (r, _) = ui.allocate_exact_size(vec2(12.0, 14.0), egui::Sense::hover());
+            ui.painter().circle_filled(r.center(), 5.0, t.accent_soft);
+            crate::icons::paint(ui.painter(), r.shrink(2.5), Icon::Check, t.accent);
+            ui.label(RichText::new(s).size(11.5).color(t.text_dim));
+        });
     };
-    egui::Frame::NONE.fill(fill).stroke(egui::Stroke::new(1.0, stroke)).corner_radius(8.0).inner_margin(8.0).show(ui, |ui| {
-        ui.set_width(ui.available_width());
-        if m.role == Role::Sage {
-            ui.label(RichText::new("Sage").font(theme::ui_bold(12.0)).color(icon_green(t)));
+    if live {
+        let skip = m.steps.len().saturating_sub(4);
+        if skip > 0 {
+            ui.label(RichText::new(format!("+{skip} earlier")).size(11.0).color(t.text_disabled));
         }
-        for p in &m.pictures {
-            ui.label(RichText::new(format!("🖼 {p}")).color(t.text_dim).small());
+        for s in m.steps.iter().skip(skip) {
+            line(ui, s);
         }
-        for s in &m.steps {
-            ui.label(RichText::new(format!("✓ {s}")).color(t.text_dim).small());
+    } else {
+        let n = m.steps.len();
+        let title = RichText::new(format!("{n} action{}", if n == 1 { "" } else { "s" })).size(11.5).color(t.text_dim);
+        egui::CollapsingHeader::new(title).id_salt(m as *const Message as usize).default_open(false).show(ui, |ui| {
+            for s in &m.steps {
+                line(ui, s);
+            }
+        });
+    }
+}
+
+/// "Sage is working" with animated dots and the latest action.
+fn working(ui: &mut Ui, t: &Tokens, latest: Option<&str>) {
+    ui.add_space(8.0);
+    ui.horizontal(|ui| {
+        ui.add_space(30.0);
+        let (r, _) = ui.allocate_exact_size(vec2(28.0, 14.0), egui::Sense::hover());
+        let phase = crate::now_ms() / 180.0;
+        for i in 0..3 {
+            let a = (((phase - i as f64 * 0.9).sin() + 1.0) / 2.0) as f32;
+            ui.painter().circle_filled(pos2(r.left() + 5.0 + i as f32 * 9.0, r.center().y - a * 2.5), 3.0, t.sage.gamma_multiply(0.45 + 0.55 * a));
         }
-        if !m.text.is_empty() {
-            markdown(ui, &m.text, t);
-        }
+        let text = latest.map(|s| format!("Sage is working · {s}")).unwrap_or_else(|| "Sage is thinking…".into());
+        ui.label(RichText::new(text).size(11.5).color(t.text_dim));
     });
 }
 
-fn icon_green(t: &Tokens) -> Color32 {
-    if t.dark { Color32::from_rgb(0x4C, 0xC3, 0x84) } else { crate::icons::GREEN }
-}
-
 fn composer(app: &mut SheetApp, ui: &mut Ui, t: &Tokens) {
-    ui.add_space(6.0);
+    ui.add_space(8.0);
     if !app.sage.attachments.is_empty() {
         let mut remove = None;
         ui.horizontal_wrapped(|ui| {
             for (i, p) in app.sage.attachments.iter().enumerate() {
-                if ui.small_button(format!("🖼 {} ✕", short(&p.name, 18))).on_hover_text("Remove").clicked() {
+                let b = egui::Button::new(RichText::new(format!("🖼 {}  ✕", short(&p.name, 18))).size(11.5)).fill(t.accent_soft).corner_radius(10.0);
+                if ui.add(b).on_hover_text("Remove").clicked() {
                     remove = Some(i);
                 }
             }
@@ -525,47 +755,92 @@ fn composer(app: &mut SheetApp, ui: &mut Ui, t: &Tokens) {
         if let Some(i) = remove.filter(|&i| i < app.sage.attachments.len()) {
             app.sage.attachments.remove(i);
         }
+        ui.add_space(4.0);
     }
-    let edit = egui::TextEdit::multiline(&mut app.sage.input)
-        .hint_text("Ask Sage anything, or tell it what to build…")
-        .desired_rows(3)
-        .desired_width(f32::INFINITY)
-        .font(FontId::new(13.0, egui::FontFamily::Proportional));
-    let resp = ui.add(edit);
-    if std::mem::take(&mut app.sage.focus_input) {
-        resp.request_focus();
-    }
-    // Enter sends, Shift+Enter makes a new line.
-    let enter = resp.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter) && !i.modifiers.shift);
-    if enter {
-        // The multiline edit already inserted the newline; drop it.
-        while app.sage.input.ends_with('\n') {
-            app.sage.input.pop();
-        }
-    }
-    let mut do_send = enter;
-    ui.horizontal(|ui| {
-        if crate::widgets::icon_button(ui, Icon::Picture, t.text_dim, "Attach a picture", vec2(26.0, 24.0)).clicked() {
-            attach_from_picker(app);
-        }
-        if ui.small_button("👁 Look").on_hover_text("Ask Sage to look at the window").clicked() && !app.sage.busy {
-            if app.sage.input.trim().is_empty() {
-                app.sage.input = "Look at my screen and tell me what you see.".into();
+    let mut do_send = false;
+    let focused = ui.memory(|m| m.focused()).is_some_and(|id| id == egui::Id::new("sage_input"));
+    egui::Frame::NONE
+        .fill(t.input_bg)
+        .stroke(egui::Stroke::new(if focused { 1.5 } else { 1.0 }, if focused { t.accent } else { t.input_border }))
+        .corner_radius(14.0)
+        .inner_margin(egui::Margin { left: 12, right: 8, top: 10, bottom: 8 })
+        .shadow(egui::Shadow { offset: [0, 2], blur: 10, spread: 0, color: t.shadow.gamma_multiply(if focused { 0.5 } else { 0.25 }) })
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            let edit = egui::TextEdit::multiline(&mut app.sage.input)
+                .id(egui::Id::new("sage_input"))
+                .hint_text("Ask Sage anything, or tell it what to build…")
+                .desired_rows(2)
+                .frame(egui::Frame::NONE)
+                .desired_width(f32::INFINITY)
+                .font(FontId::new(13.5, egui::FontFamily::Proportional));
+            let resp = ui.add(edit);
+            if std::mem::take(&mut app.sage.focus_input) {
+                resp.request_focus();
             }
-            do_send = true;
-        }
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if app.sage.busy {
-                if ui.button("■ Stop").clicked() {
-                    stop(app);
+            // Enter sends, Shift+Enter makes a new line.
+            let enter = resp.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter) && !i.modifiers.shift);
+            if enter {
+                // The multiline edit already inserted the newline; drop it.
+                while app.sage.input.ends_with('\n') {
+                    app.sage.input.pop();
                 }
-            } else {
-                let can = !app.sage.input.trim().is_empty() || !app.sage.attachments.is_empty();
-                if ui.add_enabled(can, egui::Button::new(RichText::new("Send").strong())).clicked() {
+                do_send = true;
+            }
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                if crate::widgets::icon_button(ui, Icon::Picture, t.text_dim, "Attach a picture (or drop one here)", vec2(28.0, 26.0)).clicked() {
+                    attach_from_picker(app);
+                }
+                let look = egui::Button::new(RichText::new("👁 Look").size(12.0).color(t.text_dim))
+                    .fill(Color32::TRANSPARENT)
+                    .stroke(egui::Stroke::new(1.0, t.ribbon_border))
+                    .corner_radius(10.0);
+                if ui.add(look).on_hover_text("Ask Sage to look at the window").clicked() && !app.sage.busy {
+                    if app.sage.input.trim().is_empty() {
+                        app.sage.input = "Look at my screen and tell me what you see.".into();
+                    }
                     do_send = true;
                 }
-            }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let (r, resp) = ui.allocate_exact_size(vec2(32.0, 32.0), egui::Sense::click());
+                    let busy = app.sage.busy;
+                    let can = busy || !app.sage.input.trim().is_empty() || !app.sage.attachments.is_empty();
+                    let fill = if !can {
+                        t.text_disabled
+                    } else if resp.hovered() {
+                        t.accent_dark
+                    } else if busy {
+                        t.sage
+                    } else {
+                        t.accent
+                    };
+                    let p = ui.painter();
+                    p.circle_filled(r.center(), 16.0, fill);
+                    let c = r.center();
+                    if busy {
+                        p.rect_filled(Rect::from_center_size(c, vec2(10.0, 10.0)), 2.0, Color32::WHITE);
+                    } else {
+                        // An up arrow.
+                        let s = egui::Stroke::new(2.2, Color32::WHITE);
+                        p.line_segment([c + vec2(0.0, 7.0), c + vec2(0.0, -7.0)], s);
+                        p.line_segment([c + vec2(-5.5, -1.5), c + vec2(0.0, -7.0)], s);
+                        p.line_segment([c + vec2(5.5, -1.5), c + vec2(0.0, -7.0)], s);
+                    }
+                    let resp = resp.on_hover_text(if busy { "Stop" } else { "Send (Enter)" }).on_hover_cursor(egui::CursorIcon::PointingHand);
+                    if resp.clicked() {
+                        if busy {
+                            stop(app);
+                        } else if can {
+                            do_send = true;
+                        }
+                    }
+                });
+            });
         });
+    ui.add_space(4.0);
+    ui.vertical_centered(|ui| {
+        ui.label(RichText::new("Sage can make mistakes. Check important numbers.").size(10.5).color(t.text_disabled));
     });
     if do_send && !app.sage.busy {
         if let Err(e) = send(app) {
@@ -603,7 +878,7 @@ fn short(s: &str, n: usize) -> String {
 
 /// Just enough Markdown for chat replies: headings, bullets, numbered lists, code blocks,
 /// **bold** and `code` spans.
-fn markdown(ui: &mut Ui, text: &str, t: &Tokens) {
+fn markdown(ui: &mut Ui, text: &str, t: &Tokens, color: Color32) {
     let mut in_code = false;
     let mut code = String::new();
     let lines: Vec<&str> = text.lines().collect();
@@ -620,14 +895,14 @@ fn markdown(ui: &mut Ui, text: &str, t: &Tokens) {
                     rows.push(cells);
                 }
             }
-            table(ui, &rows, t);
+            table(ui, &rows, t, color);
             continue;
         }
         if line.trim_start().starts_with("```") {
             if in_code {
                 egui::Frame::NONE.fill(t.input_bg).corner_radius(4.0).inner_margin(6.0).show(ui, |ui| {
                     ui.set_width(ui.available_width());
-                    ui.label(RichText::new(code.trim_end()).monospace().size(12.0).color(t.text));
+                    ui.label(RichText::new(code.trim_end()).monospace().size(12.0).color(color));
                 });
                 code.clear();
             }
@@ -641,21 +916,21 @@ fn markdown(ui: &mut Ui, text: &str, t: &Tokens) {
         }
         let trimmed = line.trim_start();
         if let Some(h) = trimmed.strip_prefix("### ").or_else(|| trimmed.strip_prefix("## ")).or_else(|| trimmed.strip_prefix("# ")) {
-            ui.label(RichText::new(h).font(theme::ui_bold(14.0)).color(t.text));
+            ui.label(RichText::new(h).font(theme::ui_bold(14.0)).color(color));
         } else if let Some(b) = trimmed.strip_prefix("- ").or_else(|| trimmed.strip_prefix("* ")) {
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
-                ui.label(RichText::new("•").color(t.text_dim));
-                ui.label(inline(b, t));
+                ui.label(RichText::new("•").size(15.0).color(color.gamma_multiply(0.7)));
+                ui.label(inline(b, t, color));
             });
         } else if trimmed.is_empty() {
             ui.add_space(4.0);
         } else {
-            ui.label(inline(line, t));
+            ui.label(inline(line, t, color));
         }
     }
     if in_code && !code.is_empty() {
-        ui.label(RichText::new(code.trim_end()).monospace().size(12.0).color(t.text));
+        ui.label(RichText::new(code.trim_end()).monospace().size(12.0).color(color));
     }
 }
 
@@ -665,7 +940,7 @@ fn table_cells(line: &str) -> Vec<String> {
     inner.split('|').map(|c| c.trim().replace("**", "").replace('`', "")).collect()
 }
 
-fn table(ui: &mut Ui, rows: &[Vec<String>], t: &Tokens) {
+fn table(ui: &mut Ui, rows: &[Vec<String>], t: &Tokens, color: Color32) {
     let cols = rows.iter().map(Vec::len).max().unwrap_or(0).min(12);
     let widths: Vec<usize> = (0..cols).map(|c| rows.iter().filter_map(|r| r.get(c)).map(|s| s.chars().count().min(40)).max().unwrap_or(0)).collect();
     let mut out = String::new();
@@ -687,17 +962,22 @@ fn table(ui: &mut Ui, rows: &[Vec<String>], t: &Tokens) {
     egui::Frame::NONE.fill(t.input_bg).corner_radius(4.0).inner_margin(6.0).show(ui, |ui| {
         ui.set_width(ui.available_width());
         egui::ScrollArea::horizontal().id_salt(ui.next_auto_id()).show(ui, |ui| {
-            ui.add(egui::Label::new(RichText::new(out.trim_end()).monospace().size(12.0).color(t.text)).extend());
+            ui.add(egui::Label::new(RichText::new(out.trim_end()).monospace().size(12.0).color(color)).extend());
         });
     });
 }
 
-fn inline(s: &str, t: &Tokens) -> LayoutJob {
+fn inline(s: &str, t: &Tokens, color: Color32) -> LayoutJob {
     let mut job = LayoutJob::default();
     job.wrap.max_width = f32::INFINITY;
-    let normal = TextFormat { font_id: FontId::new(13.0, egui::FontFamily::Proportional), color: t.text, ..Default::default() };
-    let bold = TextFormat { font_id: theme::ui_bold(13.0), color: t.text, ..Default::default() };
-    let mono = TextFormat { font_id: FontId::new(12.0, egui::FontFamily::Monospace), color: t.text, background: t.input_bg, ..Default::default() };
+    let normal = TextFormat { font_id: FontId::new(13.0, egui::FontFamily::Proportional), color, ..Default::default() };
+    let bold = TextFormat { font_id: theme::ui_bold(13.0), color, ..Default::default() };
+    let mono = TextFormat {
+        font_id: FontId::new(12.0, egui::FontFamily::Monospace),
+        color,
+        background: if color == t.text { t.input_bg } else { Color32::from_white_alpha(40) },
+        ..Default::default()
+    };
     let mut rest = s;
     while !rest.is_empty() {
         let next_bold = rest.find("**");
@@ -821,7 +1101,7 @@ mod tests {
     fn inline_markdown_never_panics() {
         let t = Tokens::light();
         for s in ["**bold** and `code`", "**unclosed", "`unclosed", "a ** b ` c", "", "é**ü**`ß`", "****", "``"] {
-            let job = inline(s, &t);
+            let job = inline(s, &t, t.text);
             let plain: String = job.text.clone();
             assert!(!plain.contains("**") || s.contains("****") || s == "a ** b ` c" || s == "**unclosed", "{s:?} → {plain:?}");
         }

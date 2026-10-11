@@ -10,6 +10,7 @@ Sage is Celve's built-in assistant. It lives in a pane on the right of the windo
 - **See**: it looks at the window when you refer to what's on screen, and checks its own work visually
   after building something. You can attach pictures (picture button, or drop a PNG/JPEG/GIF/WebP on the
   window while the pane is open): receipts, photos of tables, handwritten notes, screenshots.
+- **Web**: the same Sage runs inside Celve Web ([web.md](web.md)), driving the workbook in the browser tab.
 - **Take over**: create workbooks and sheets, write data and formulas, format, make tables, sort,
   filter and chart — through exactly the same commands as the ribbon, the control channel, the CLI and
   MCP, so every change is undoable (⌘Z) and shows up in **Automate ▸ Action Journal**.

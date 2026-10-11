@@ -29,6 +29,8 @@ pub fn title_bar(app: &mut SheetApp, ui: &mut Ui) {
         }
         ui.horizontal_centered(|ui| {
             ui.add_space(TITLE_LEFT_PAD);
+            crate::sage::brand(ui);
+            ui.add_space(14.0);
             // AutoSave toggle (saves after each change when the workbook has a file).
             ui.label(egui::RichText::new("AutoSave").font(theme::ui_font(12.5)).color(t.text_dim));
             let on = app.grid.autosave();
@@ -113,7 +115,7 @@ pub fn title_bar(app: &mut SheetApp, ui: &mut Ui) {
                 if icon_button(ui, Icon::Comment, t.text_dim, "Comments", vec2(28.0, 26.0)).clicked() {
                     app.open_dialog("comments", json!({}));
                 }
-                if icon_button(ui, Icon::Sage, t.text, "Sage: ask anything, or let Sage build it (⌘⇧I)", vec2(28.0, 26.0)).clicked() {
+                if crate::sage::ask_button(ui, app.sage.open, app.sage.busy).clicked() {
                     app.run_or_alert("view.sage", json!({}));
                 }
             });

@@ -12,14 +12,29 @@
   <link rel="apple-touch-icon" href="icon-192.png">
   <link data-trunk rel="rust" data-bin="celve-web" data-wasm-opt="z" data-weak-refs />
   <style>
-    html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #f3f3f3; }
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #f3f6f4; }
+    @media (prefers-color-scheme: dark) { html, body { background: #151b18; } #celve_loading { color: #a8b5ae; } }
     #celve_canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
     #celve_loading { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
-      color: #555; font: 14px system-ui, sans-serif; pointer-events: none; }
+      gap: 14px; color: #5a6760; font: 14px system-ui, -apple-system, "Segoe UI", sans-serif; pointer-events: none;
+      background: radial-gradient(1200px 600px at 50% 40%, rgba(16,124,65,.10), transparent 70%); }
+    #celve_loading img { width: 96px; height: 96px; border-radius: 22px; box-shadow: 0 12px 32px rgba(11,90,47,.25); animation: celve-float 2.4s ease-in-out infinite; }
+    #celve_loading h1 { margin: 6px 0 0; font-size: 28px; font-weight: 700; letter-spacing: -.02em; color: #0b5a2f; }
+    #celve_loading p { margin: 0; }
+    #celve_loading .bar { width: 160px; height: 4px; border-radius: 2px; background: rgba(16,124,65,.15); overflow: hidden; }
+    #celve_loading .bar i { display: block; width: 40%; height: 100%; border-radius: 2px; background: #107c41; animation: celve-slide 1.2s ease-in-out infinite; }
+    @keyframes celve-float { 50% { transform: translateY(-6px); } }
+    @keyframes celve-slide { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+    @media (prefers-reduced-motion: reduce) { #celve_loading img, #celve_loading .bar i { animation: none; } }
   </style>
 </head>
 <body>
   <canvas id="celve_canvas"></canvas>
-  <div id="celve_loading"><img src="icon-192.png" width="96" height="96" alt=""><p>Loading Celve&hellip;</p></div>
+  <div id="celve_loading">
+    <img src="icon-192.png" alt="">
+    <h1>Celve</h1>
+    <p>Spreadsheets with Sage built in</p>
+    <div class="bar"><i></i></div>
+  </div>
 </body>
 </html>

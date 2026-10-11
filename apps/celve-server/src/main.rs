@@ -30,7 +30,7 @@ use std::time::Duration;
 use axum::Router;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Query, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use serde_json::{Value as Json, json};
@@ -51,6 +51,8 @@ const MAX_PICTURE_BYTES: usize = 5 * 1024 * 1024;
 #[derive(Clone)]
 struct Config {
     access_key: Option<String>,
+    /// Extra page origins allowed to connect (`CELVE_ALLOWED_ORIGINS`, comma-separated).
+    allowed_origins: Arc<Vec<String>>,
     workroot: PathBuf,
     sessions: Arc<AtomicUsize>,
     next_id: Arc<AtomicU64>,
@@ -94,6 +96,14 @@ fn main() {
     }
     let config = Config {
         access_key,
+        allowed_origins: Arc::new(
+            std::env::var("CELVE_ALLOWED_ORIGINS")
+                .unwrap_or_default()
+                .split(',')
+                .map(|o| o.trim().trim_end_matches('/').to_string())
+                .filter(|o| !o.is_empty())
+                .collect(),
+        ),
         workroot: std::env::temp_dir().join("celve-sage"),
         sessions: Arc::new(AtomicUsize::new(0)),
         next_id: Arc::new(AtomicU64::new(1)),
@@ -125,13 +135,35 @@ fn main() {
     });
 }
 
-async fn ws_handler(ws: WebSocketUpgrade, Query(q): Query<HashMap<String, String>>, State(config): State<Config>) -> Response {
+async fn ws_handler(ws: WebSocketUpgrade, headers: HeaderMap, Query(q): Query<HashMap<String, String>>, State(config): State<Config>) -> Response {
+    // Browsers send their page's origin: only Celve's own page may open a Sage session, so a
+    // website you happen to visit can't connect to this server and drive Sage.
+    if !origin_allowed(
+        headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()),
+        headers.get(header::HOST).and_then(|v| v.to_str().ok()),
+        &config.allowed_origins,
+    ) {
+        log::warn!("refused a WebSocket from another site's page");
+        return (StatusCode::FORBIDDEN, "cross-site connection refused").into_response();
+    }
     if let Some(key) = &config.access_key
         && !q.get("key").is_some_and(|k| constant_time_eq(k.as_bytes(), key.as_bytes()))
     {
         return (StatusCode::UNAUTHORIZED, "access key required").into_response();
     }
     ws.max_message_size(MAX_MESSAGE).on_upgrade(move |socket| session(socket, config))
+}
+
+/// Same-origin check: the `Origin` header's host must be the `Host` the page was served from (or
+/// one of `CELVE_ALLOWED_ORIGINS`). No `Origin` (not a browser) is allowed; the access key still
+/// applies.
+fn origin_allowed(origin: Option<&str>, host: Option<&str>, extra: &[String]) -> bool {
+    let Some(origin) = origin else { return true };
+    if extra.iter().any(|o| o.eq_ignore_ascii_case(origin)) {
+        return true;
+    }
+    let origin_host = origin.split_once("://").map(|(_, rest)| rest).unwrap_or("");
+    host.is_some_and(|h| !h.is_empty() && origin_host.eq_ignore_ascii_case(h))
 }
 
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
@@ -351,6 +383,19 @@ fn serve_bridge(stream: TcpStream, token: &str, out: &tmpsc::UnboundedSender<Jso
 mod tests {
     #![allow(clippy::unwrap_used)]
     use super::*;
+
+    #[test]
+    fn only_celve_pages_may_connect() {
+        let none: Vec<String> = vec![];
+        assert!(origin_allowed(Some("http://127.0.0.1:8780"), Some("127.0.0.1:8780"), &none));
+        assert!(origin_allowed(Some("https://celve.example.com"), Some("celve.example.com"), &none));
+        assert!(!origin_allowed(Some("https://evil.example"), Some("127.0.0.1:8780"), &none));
+        assert!(!origin_allowed(Some("http://127.0.0.1:8780.evil.example"), Some("127.0.0.1:8780"), &none));
+        assert!(!origin_allowed(Some("null"), Some("127.0.0.1:8780"), &none));
+        assert!(!origin_allowed(Some("http://127.0.0.1:8780"), None, &none));
+        assert!(origin_allowed(None, Some("127.0.0.1:8780"), &none));
+        assert!(origin_allowed(Some("https://app.example"), Some("api.example"), &["https://app.example".into()]));
+    }
 
     #[test]
     fn pictures_are_checked() {

@@ -13,7 +13,8 @@
 //! files are read asynchronously.
 //!
 //! URL query flags: `?webgl` forces WebGL2; `?sample=sales|budget|grades` opens a sample; `?sage`
-//! opens the Sage pane; `?ask=…` opens it and sends that message to Sage; `?key=…` is the server's access key.
+//! opens the Sage pane; `?ask=…` opens it with that message typed in (never sent
+//! automatically); `?key=…` is the server's access key.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 #[cfg(target_arch = "wasm32")]

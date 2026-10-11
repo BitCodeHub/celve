@@ -49,9 +49,13 @@ pub fn start() {
                     app.services.sage = Some(Box::new(sage.clone()));
                     let (control_tx, control_rx) = std::sync::mpsc::channel::<ControlRequest>();
                     app.control_rx = Some(control_rx);
+                    // `?ask=` only fills in the message: a link must never make Sage act on its own.
                     let ask = param(&q, "ask").filter(|a| !a.trim().is_empty());
                     if param(&q, "sage").is_some() || ask.is_some() {
                         let _ = app.run("view.sage", serde_json::json!({"on": true}));
+                    }
+                    if let Some(text) = ask {
+                        let _ = app.run("sage.draft", serde_json::json!({"text": text}));
                     }
                     // Follow the browser's language, except a CJK one: the web build has no system
                     // CJK fonts (none are bundled), so that interface would render as tofu.
@@ -63,7 +67,7 @@ pub fn start() {
                         app.ui.language = browser;
                     }
                     SheetApp::setup_context_for_language(&cc.egui_ctx, false, app.ui.language);
-                    Ok(Box::new(WebShell { app, inbox, sage, control_tx, requests: Requests::default(), pictures: Inbox::default(), ask }))
+                    Ok(Box::new(WebShell { app, inbox, sage, control_tx, requests: Requests::default(), pictures: Inbox::default() }))
                 }),
             )
             .await;
@@ -96,8 +100,6 @@ struct WebShell {
     requests: Requests,
     /// Pictures dropped while the Sage pane is open, read asynchronously.
     pictures: Inbox,
-    /// `?ask=…`: a message for Sage, sent as soon as Sage is connected.
-    ask: Option<String>,
 }
 
 impl eframe::App for WebShell {
@@ -125,13 +127,6 @@ impl eframe::App for WebShell {
             if let Err(e) = result {
                 self.app.toast = Some((e, gridcraft_ui_egui::now_ms()));
             }
-        }
-        if self.ask.is_some()
-            && gridcraft_ui_egui::sage::SageHost::availability(&self.sage).is_ok()
-            && let Some(text) = self.ask.take()
-            && let Err(e) = self.app.run("sage.ask", serde_json::json!({"text": text}))
-        {
-            log::warn!("?ask: {e}");
         }
         // Sage's requests join the control queue the app drains in `logic`.
         for (rid, method, params) in self.sage.take_requests() {
